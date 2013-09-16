@@ -148,6 +148,15 @@ state  integer    nrnd1    k    dyn_nmm     1      -      r    "NRND1"
 # For the Inlined NCEP Tracker
 #
 
+state  real   tracker_distsq ij dyn_nmm     1      -      rh       "TRACKER_DISTSQ" "Square of distance from tracker fix location" "m2"
+state  real   tracker_edge_dist - dyn_nmm   1      -    rh  "tracker_edge_dist" "Distance from storm center to domain edge" "km"
+state  real   tracker_angle   ij dyn_nmm     1      -    rh  "tracker_angle" "Angle to storm center (East=0, North=pi/2, etc.)" "radians"
+
+state real    track_old_lon   {otrak} dyn_nmm  1   -    rh  "track_old_lon" "Old tracker longitudes" "degrees"
+state real    track_old_lat   {otrak} dyn_nmm  1   -    rh  "track_old_lat" "Old tracker latitudes" "degrees"
+state integer track_old_ntsd  {otrak} dyn_nmm  1   -    rh  "track_old_ntsd" "Old tracker times" ""
+state integer track_n_old     1       dyn_nmm  1   -    rh  "track_n_old" "Number of old tracker latitudes" ""
+
 state real    track_stderr_m1 - dyn_nmm     1      -    rh  "track_stderr_m1" "Standard deviation of tracker centers one hour ago" "km"
 state real    track_stderr_m2 - dyn_nmm     1      -    rh  "track_stderr_m2" "Standard deviation of tracker centers two hours ago" "km"
 state real    track_stderr_m3 - dyn_nmm     1      -    rh  "track_stderr_m3" "Standard deviation of tracker centers three hours ago" "km"
@@ -157,6 +166,9 @@ state real    tracker_fixlon  - dyn_nmm     1      -    rh  "tracker_fixlon"  "S
 state real    tracker_fixlat  - dyn_nmm     1      -    rh  "tracker_fixlat"  "Storm fix latitude according to inline NCEP tracker" "degrees"
 state integer tracker_ifix    - dyn_nmm     1      -    rh  "tracker_ifix"    "Storm fix i location (H grid)" ""
 state integer tracker_jfix    - dyn_nmm     1      -    rh  "tracker_jfix"    "Storm fix j location (H grid)" ""
+state real    tracker_rmw     - dyn_nmm     1      -    rh  "tracker_rmw"     "Storm RMW according to inline NCEP tracker" "km"
+state real    tracker_pmin    - dyn_nmm     1      -    rh  "tracker_pmin"    "Storm min MSLP according to inline NCEP tracker" "Pa"
+state real    tracker_vmax    - dyn_nmm     1      -    rh  "tracker_vmax"    "Storm max 10m wind according to inline NCEP tracker" "m s-1"
 state logical tracker_havefix - dyn_nmm     1      -    rh  "tracker_havefix" "True = storm fix locations are valid" ""
 state logical tracker_gave_up - dyn_nmm     1      -    rh  "tracker_gave_up" "True = inline tracker gave up on tracking the storm" ""
 
@@ -169,6 +181,12 @@ state  real   p850rv     ij     dyn_nmm     1      -    rh  "P850rv" "Relative v
 state  real   p700rv     ij     dyn_nmm     1      -    rh  "P700rv" "Relative vorticity at 700mbar mass points" "s^-1"
 state  real   p850wind   ij     dyn_nmm     1      -    rh  "P850wind" "Wind magnitude at 850mbar mass points" "m/s"
 state  real   p700wind   ij     dyn_nmm     1      -    rh  "P700wind" "Wind magnitude at 700mbar mass points" "m/s"
+state  real   p500u      ij     dyn_nmm     1      -    rh  "P500u" "Grid +X wind at 500mbar mass points" "m/s"
+state  real   p500v      ij     dyn_nmm     1      -    rh  "P500v" "Grid +Y wind at 500mbar mass points" "m/s"
+state  real   p700u      ij     dyn_nmm     1      -    rh  "P700u" "Grid +X wind at 700mbar mass points" "m/s"
+state  real   p700v      ij     dyn_nmm     1      -    rh  "P700v" "Grid +Y wind at 700mbar mass points" "m/s"
+state  real   p850u      ij     dyn_nmm     1      -    rh  "P850u" "Grid +X wind at 850mbar mass points" "m/s"
+state  real   p850v      ij     dyn_nmm     1      -    rh  "P850v" "Grid +Y wind at 850mbar mass points" "m/s"
 state  real   p850z      ij     dyn_nmm     1      -    rh  "P850z" "Height at 850mbar mass points" "m"
 state  real   p700z      ij     dyn_nmm     1      -    rh  "P700z" "Height at 700mbar mass points" "m"
 state  real   m10wind    ij     dyn_nmm     1      -    rh  "m10wind" "Wind magnitude at 10m mass points" "m/s"
@@ -245,6 +263,7 @@ state  real   VLON        ij     dyn_nmm     1      -      irh
 state  real   VLAT        ij     dyn_nmm     1      -      irh
 
 state integer hifreq_lun   -     dyn_nmm     0      -      -
+state integer outatcf_lun  -     dyn_nmm     0      -      -
 
 
 #
@@ -633,8 +652,9 @@ state integer imicrogram -   misc        -    -    r   "imicrogram"  "flag 0/1 0
 
 # Vortex Tracker Variables
 
-# Revised Centroid Method (tracker #4)
 state  real   distsq    ij     dyn_nmm     1      -      rh       "DISTSQ"  "Approximate square of distance from nest center for vortex tracker #4" "m2"
+
+# Revised Centroid Method (tracker #4)
 state  real   weightout ij     dyn_nmm     1      -      rh       "WEIGHTOUT"  "Vortex center finder weight array for vortex tracker #4" ""
 state integer mslp_noisy ij    dyn_nmm     1      -      rh       "MSLP_NOISY"  "0=okay, 1=noisy MSLP, 2=outside search radius, 3=boundary (vortex tracker #4)" ""
 
@@ -1159,6 +1179,7 @@ rconfig   integer JULDAY                  namelist,time_control         max_doma
 rconfig   real    GMT                     namelist,time_control         max_domains    0.      hr    "GMT"           ""      ""
 #for HWRF: end 
 rconfig   character  high_freq_outname namelist,time_control           1  "hifreq_d<domain>.htcf"          -     "name of hifreq output file"   ""      ""
+rconfig   character  partial_atcf_outname namelist,time_control        1  "track_d<domain>.patcf"          -     "name of partial atcf output file"   ""      ""
 rconfig   character  input_inname      namelist,time_control		1  "wrfinput_d<domain>"          -     "name of input   infile"   ""      ""
 rconfig   character  input_outname     namelist,time_control		1  "wrfinput_d<domain>"          -     "name of input   outfile"  ""      ""
 rconfig   character  bdy_inname        namelist,time_control		1  "wrfbdy_d<domain>"            -     "name of boundary infile"  ""      ""
@@ -1275,7 +1296,8 @@ rconfig   integer     cu_physics          namelist,physics	max_domains    0     
 rconfig   integer shcu_physics            namelist,physics      max_domains    0       rh   "shcu_physics"  ""      ""
 rconfig   integer     cu_diag             namelist,physics      max_domains    0       rh       "cu_diag"            " additional t-averaged stuff for cuphys"      ""
 
-rconfig   integer vortex_tracker          namelist,physics      max_domains    6      -      "vortex_tracker" "Vortex Tracking Algorithm" ""
+rconfig   integer num_old_fixes           namelist,physics      1              5      h      "num_old_fixes"  "Number of old tracker fixes to store." ""
+rconfig   integer vortex_tracker          namelist,physics      max_domains    6      h      "vortex_tracker" "Vortex Tracking Algorithm" ""
 rconfig   real      gfs_alpha             namelist,physics      max_domains    1       irh      "boundary depth factor"  "" ""
 
 rconfig   real    CUDT                    namelist,physics	max_domains    0       h    "CUDT"          ""      ""
@@ -1526,7 +1548,7 @@ package   vt_track_nest vortex_tracker==2            -             state:pdyn_pa
 package   vt_centroid   vortex_tracker==3            -             state:pdyn_parent,pdyn_smooth
 package   vt_rev_centr  vortex_tracker==4            -             state:weightout,mslp_noisy,pdyn_parent,pdyn_smooth,distsq
 package   vt_pdyn       vortex_tracker==5            -             state:pdyn_parent,pdyn_smooth,distsq
-package   vt_ncep       vortex_tracker==6            -             state:pdyn_parent,pdyn_smooth,p850rv,p700rv,p850wind,p700wind,p850z,p700z,m10wind,m10rv,sp850rv,sp700rv,sp850wind,sp700wind,sp850z,sp700z,sm10wind,sm10rv,smslp,tracker_fixes,distsq
+package   vt_ncep       vortex_tracker==6            -             state:pdyn_parent,pdyn_smooth,p850rv,p700rv,p850wind,p700wind,p850z,p700z,m10wind,m10rv,sp850rv,sp700rv,sp850wind,sp700wind,sp850z,sp700z,sm10wind,sm10rv,smslp,tracker_fixes,distsq,p500u,p500v,p700u,p700v,p850u,p850v
 #---------------------------------------------------------------
 package   passiveqv     mp_physics==0                -             moist:qv
 package   kesslerscheme mp_physics==1                -             moist:qv,qc,qr

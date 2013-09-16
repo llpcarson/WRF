@@ -18,8 +18,9 @@ module module_membrane_mslp
        62500., 65000., 67500., 70000., 72500., 75000., 77500., 80000., &
        82500., 85000., 87500., 90000., 92500., 95000., 97500.,100000./)
 
-  ! index within post_stdpres of the 850mbar and 700mbar levels, respectively:
-  integer, parameter :: k850 = 27, k700=21
+  ! index within post_stdpres of the 850mbar, 700mbar and 500mbar
+  ! levels, respectively:
+  integer, parameter :: k850 = 27, k700=21, k500=13
 
   ! Pressure "interface" levels, used only for interpolation.  These
   ! are half-way between pressure levels (post_stdpres) in pressure
@@ -283,10 +284,11 @@ contains
     integer :: i,j,ks,a,kd,k
     real :: weight, TL,QL,PL, tempT, RHL, TVRL, TVRBLO, TBLO,QBLO
 
-    integer,target, dimension(ips:ipe,jps:jpe) :: ks850,ks700
+    integer,target, dimension(ips:ipe,jps:jpe) :: ks850,ks700,ks500
+    real, target,dimension(ips:ipe,jps:jpe) :: dummy1,dummy2
     integer, pointer, dimension(:,:) :: ksX
 
-    real, pointer, dimension(:,:) :: preswind,presrv
+    real, pointer, dimension(:,:) :: preswind,presrv,presu,presv
 
     real :: Pmass(ips:ipe,jps:jpe,kds:kde)
     real :: numsum,densum,modelP1,modelP2,pdiff,presQ,presT,ZL,QSAT, U1, V1, U2, V2, dudy1,dvdx1, dudy2,dvdx2
@@ -301,6 +303,7 @@ contains
 
     ks850=0
     ks700=0
+    ks500=0
 
     ! Interpolate geopotential height to post_stdpres pressure levels
     ! and create a temporary array with non-hydrostatic pressure
@@ -337,6 +340,8 @@ contains
                       ks850(i,j)=ks
                    elseif(kd==k700) then
                       ks700(i,j)=ks
+                   elseif(kd==k500) then
+                      ks500(i,j)=ks
                    endif
 
 103                format('interp ks=',I0,' kd=',I0,' presT(i=',I0,',j=',I0,',kd)=',F0.3, &
@@ -390,43 +395,64 @@ contains
    ifwind: if(size(grid%p700rv)>1) then
     ! Interpolate wind to H points on pressure levels, calculating
     ! horizontal wind vector magnitude and vertical component of
-    ! vorticity.  Interpolate only to 700 and 850 mbar.
-    windloop: do k=1,2
-       if(k==1) then
+    ! vorticity.  Interpolate only to 700 and 850 mbar, except for U &
+    ! V which are also interpolated to 500mbar.
+    windloop: do k=0,1,2
+       if(k==0) then
+          ! Only need wind components at 500 mbar
+          kd=k500
+          ksX=>ks500
+          preswind=>dummy1
+          presrv=>dummy2
+          presu=>grid%p500u
+          presv=>grid%p500v
+       elseif(k==1) then
           ksX=>ks700
           preswind=>grid%p700wind
           presrv=>grid%p700rv
           kd=k700
+          presu=>grid%p700u
+          presv=>grid%p700v
        elseif(k==2) then
           ksX=>ks850
           kd=k850
           preswind=>grid%p850wind
           presrv=>grid%p850rv 
-      endif
+          presu=>grid%p850u
+          presv=>grid%p850v
+       endif
 
       ! No wind on boundaries:
       if(jps<=jds) then
          do i=ips,min(ide-1,ipe)
             preswind(i,jds)=0
             presrv(i,jds)=0
+            presu(i,jds)=0
+            presv(i,jds)=0
          enddo
       endif
       if(jpe>=jde-1) then
          do i=ips,min(ide-1,ipe)
             preswind(i,jde-1)=0
             presrv(i,jde-1)=0
+            presu(i,jde-1)=0
+            presv(i,jde-1)=0
          enddo
       endif
       if(ips<=ids) then
          do j=jps,min(jde-1,jpe)
             preswind(ids,j)=0
             presrv(ids,j)=0
+            presu(ids,j)=0
+            presv(ids,j)=0
          enddo
       endif
       if(ipe>=ide-1) then
          do j=jps,min(jde-1,jpe)
             preswind(ide-1,j)=0
             presrv(ide-1,j)=0
+            presu(ide-1,j)=0
+            presv(ide-1,j)=0
          enddo
       endif
 
@@ -448,7 +474,9 @@ contains
                dudy1 = (grid%u(i,j+1,ks)-grid%u(i,j-1,ks))/(2.*grid%dy_nmm)
                dvdx2 = (grid%v(i+1-a,j,ks-1)-grid%v(i-a,j,ks-1))/(2.*grid%dx_nmm(i,j))
                dudy2 = (grid%u(i,j+1,ks-1)-grid%u(i,j-1,ks-1))/(2.*grid%dy_nmm)
-               
+
+               presu(i,j)=weight*u2+(1.-weight)*u1
+               presv(i,j)=weight*v2+(1.-weight)*v1
                preswind(i,j)=weight*sqrt(u2*u2+v2*v2) + (1.-weight)*sqrt(u1*u1+v1*v1)
                presrv(i,j)=(dvdx2-dudy2)*weight + (dvdx1-dudy1)*(1.-weight)
             elseif(post_stdpres(kd)>=Pmass(i,j,kds)) then
@@ -462,6 +490,8 @@ contains
 
                preswind(i,j)=sqrt(u1*u1 + v1*v1)
                presrv(i,j)=dvdx1-dudy1
+               presu(i,j)=u1
+               presv(i,j)=v1
             endif
          end do
       end do

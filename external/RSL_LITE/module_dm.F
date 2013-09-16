@@ -1092,6 +1092,22 @@ CONTAINS
 #endif
    END SUBROUTINE wrf_dm_min_reals
 
+   FUNCTION wrf_dm_sum_real8 ( inval )
+     ! Forced eight byte real sum needed for calculating an accurate
+     ! mean motion in HWRF moduel_tracker.
+      IMPLICIT NONE
+#ifndef STUBMPI
+      INCLUDE 'mpif.h'
+      REAL*8 inval, retval, wrf_dm_sum_real8
+      INTEGER ierr
+      CALL mpi_allreduce ( inval, retval , 1, MPI_REAL8, MPI_SUM, local_communicator, ierr )
+      wrf_dm_sum_real8 = retval
+#else
+      REAL*8 wrf_dm_sum_real8,inval
+      wrf_dm_sum_real8 = inval
+#endif
+   END FUNCTION wrf_dm_sum_real8
+
    REAL FUNCTION wrf_dm_sum_real ( inval )
       IMPLICIT NONE
 #ifndef STUBMPI

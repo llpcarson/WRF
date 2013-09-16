@@ -595,7 +595,10 @@
 #ifdef HWRF
       if(allowed_to_read .and. config_flags%high_freq) then
         if(grid%id==config_flags%high_dom) then
+           ! Open HTCF LUN:
            call HIFREQ_OPEN(grid,config_flags)
+           ! Open per-nest-move ATCF LUN:
+           call HIFREQ_OPEN(grid,config_flags,atcf=.true.)
         elseif(config_flags%high_dom==-99) then
           nestless=.true.
            CALL nl_get_max_dom( 1, max_dom )
@@ -611,7 +614,10 @@
               endif
            enddo nestdo
            if(nestless) then
+              ! Open HTCF LUN:
               call HIFREQ_OPEN(grid,config_flags)
+              ! Open per-nest-move ATCF LUN:
+              call HIFREQ_OPEN(grid,config_flags,atcf=.true.)
            endif
         else
            write(message,'("Domain ",I0," does not have hifreq out.")') grid%id

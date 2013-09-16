@@ -73,6 +73,14 @@ nl_set_0_routines.o : nl_set_0_routines.F
 nl_set_1_routines.o : nl_set_1_routines.F
 module_sf_clm.o: module_sf_clm.F
 
+module_tracker.o: module_tracker.F
+	$(RM) $@
+	$(SED_FTN) $*.F > $*.b 
+	$(CPP) -I$(WRF_SRC_ROOT_DIR)/inc $(CPPFLAGS) $*.b  > $*.f90
+	$(RM) $*.b
+	$(FC) -o $@ -c $(FCFLAGS) $(MODULE_DIRS) $(PROMOTION) $(FCSUFFIX) -check all -debug all -traceback -O0 $*.f90
+
+
 module_sf_clm.o \
 mediation_integrate.o \
 track_driver.o \
