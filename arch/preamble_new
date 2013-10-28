@@ -18,7 +18,7 @@ LIBINCLUDE      =       .
 #### Note to add a core, this has to be added to.
 
 COREDEFS = CONFIGURE_EM_CORE \
-           CONFIGURE_NMM_CORE -DNMM_MAX_DIM=2600 \
+           CONFIGURE_NMM_CORE -DNMM_MAX_DIM=40000 \
 	   CONFIGURE_COAMPS_CORE \
 	   CONFIGURE_DA_CORE \
            CONFIGURE_EXP_CORE
@@ -31,7 +31,7 @@ MAX_DOMAINS	=	21
 
 #### DM buffer length for the configuration flags.
 
-CONFIG_BUF_LEN	=	65536
+CONFIG_BUF_LEN	=       131072 
 
 #### Size of bitmasks (in 4byte integers) of stream masks for WRF I/O
 
