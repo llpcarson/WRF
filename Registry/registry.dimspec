@@ -36,8 +36,8 @@ dimspec    ndfi    1     namelist=dfi_time_dim             c     dfi time dimens
 dimspec    j       2     standard_domain                   y     south_north
 dimspec    k       3     standard_domain                   z     bottom_top
 #definitions for NMM slab arrays
-dimspec    q       -     constant=2600                     c     # a little crude right now
-dimspec    r       -     constant=2000                     c     # a little crude right now
+dimspec    q       -     constant=40000                    c     # a little crude right now
+dimspec    r       -     constant=40010                    c     # a little crude right now
 dimspec    z       -     constant=(-3:3)                   c
 dimspec    n       -     constant=(0:6)                    c
 endif
@@ -73,8 +73,6 @@ ifdef BUILD_CHEM=1
 dimspec    o       3     namelist=ne_area                  z     bio_emissions_dimension
 dimspec    +       2     namelist=kemit                    z     emissions_zdim
 dimspec    nm      2     namelist=nmegan                   z     megan_species
-dimspec    ndv     3     namelist=ndepvel                  z     deposition_velocity_species
-dimspec    kdv     2     namelist=kdepvel                  z     deposition_velocity_vert_levels
 dimspec    dust    2     namelist=kfuture                  z     klevs_for_dust
 dimspec    ]       2     namelist=kfire                    z     klevs_for_fire
 dimspec    %       2     namelist=kdvel                    z     klevs_for_dvel
