@@ -2029,7 +2029,7 @@
 
 !-----------------------------------------------------------------------
 !---- Initialization for gravity wave drag (GWD) & mountain blocking (MB)
-!
+!    TEST BY YC KWON
       CALL nl_get_cen_lat(GRID%ID, CEN_LAT)    !-- CEN_LAT in deg
       CALL nl_get_cen_lon(GRID%ID, CEN_LON)    !-- CEN_LON in deg
       DTPHS=grid%dt*grid%nphs
