@@ -8,7 +8,8 @@ CONTAINS
 RECURSIVE SUBROUTINE integrate ( grid )
 
 
-
+   USE omp_lib  			!Added by Thiago to use the OpenMP runtime API in the code
+   USE module_sync_domains	!Added by Thiago to allow domain-synchronized execution of various parts of the model.
    USE module_domain
    USE module_driver_constants
    USE module_nesting
@@ -150,11 +151,12 @@ RECURSIVE SUBROUTINE integrate ( grid )
    INTEGER                                :: fid , rid
    LOGICAL                                :: lbc_opened
    REAL                                   :: time, btime, bfrq
-   CHARACTER*256                          :: message, message2,message3
+   CHARACTER*256                          :: message, message2, message3
    TYPE (grid_config_rec_type)            :: config_flags
    LOGICAL , EXTERNAL                     :: wrf_dm_on_monitor
    INTEGER                                :: idum1 , idum2 , ierr , open_status
    LOGICAL                                :: should_do_last_io
+   INCLUDE "mpif.h" !Added by Thiago to generate MPI log
 
    ! interface
    INTERFACE
@@ -266,6 +268,26 @@ RECURSIVE SUBROUTINE integrate ( grid )
 
    END INTERFACE
 
+   !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+   IF(grid%id == 1) THEN
+       !Initialize the module used to synchronize model tasks among domains in the same nesting level
+       CALL init_module_sync_domains()
+
+       !Reset all of domain D01's MPI communicators
+       grid%communicator   = GET_DOMAIN_MPI_COMMUNICATOR(1)     !Initially, D01's communicator was the same as "MODULE_DM:local_communicator", now it carries its own unique communicator.
+       grid%communicator_x = GET_DOMAIN_MPI_COMMUNICATOR_X(1)   !Set the MPI communicator for the x-direction of the mesh
+       grid%communicator_y = GET_DOMAIN_MPI_COMMUNICATOR_Y(1)   !Set the MPI communicator for the y-direction of the mesh
+
+       !Store the D01 domain reference for global access
+       CALL STORE_DOMAIN_POINTER(grid)
+
+       !Initialize the "C" parallel integration p-threads driver. The current implementation does not use a p-thread pool.
+       CALL init_hrd_pthread_interface(grid%max_dom,ierr)
+       IF(ierr .NE. 0) THEN
+           CALL WRF_ERROR_FATAL('Could not initialize the parallel integration p-threads driver.')
+       ENDIF
+   ENDIF
+
    ! This allows us to reference the current grid from anywhere beneath 
    ! this point for debugging purposes.  
    CALL set_current_grid_ptr( grid )
@@ -275,13 +297,25 @@ RECURSIVE SUBROUTINE integrate ( grid )
       IF ( config_flags%grid_allowed ) THEN
          CALL domain_clockprint ( 150, grid, 'DEBUG:  top of integrate(),' )
          DO WHILE ( .NOT. domain_clockisstopsubtime(grid) )
+            !Added by Thiago for debug purposes
+            IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ TOP OF MAIN INTEGRATION LOOP FOR DOMAIN ',grid%id
+
             IF ( wrf_dm_on_monitor() ) THEN
+#ifdef THREADED_INTEGRATION
+               IF(grid%id == 1) CALL start_timing   !Condition added by Thiago: Only measure timing for D01 till MODULE_TIMING is made thread-safe
+#else
                CALL start_timing
+#endif
             END IF
             CALL med_setup_step ( grid , config_flags )
+
+            CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
             a_nest_was_opened = .false.
             ! for each nest whose time has come...
             DO WHILE ( nests_to_open( grid , nestid , kid ) )
+               !Added by Thiago to catch OpenMP nest bug
+               IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' opened nest=',nestid,'/kid=',kid
+
                ! nestid is index into model_config_rec (module_configure) of the grid
                ! to be opened; kid is index into an open slot in grid's list of children
                a_nest_was_opened = .true.
@@ -295,21 +329,52 @@ RECURSIVE SUBROUTINE integrate ( grid )
                IF ( grid%dfi_stage == DFI_STARTFWD ) THEN
                   CALL wrf_dfi_startfwd_init(new_nest)
                ENDIF
+
+               !Added by Thiago to allow each grid to use its own MPI communicator
+               new_nest%communicator   = GET_DOMAIN_MPI_COMMUNICATOR(nestid)    !Set the unique communicator for this domain
+               new_nest%communicator_x = GET_DOMAIN_MPI_COMMUNICATOR_X(nestid)  !Set the unique x-direction communicator for this domain. AFAIK, this is needed only by routine VT4_MOVE (dyn_nmm/module_STATS_FOR_MOVE.F)
+               new_nest%communicator_y = GET_DOMAIN_MPI_COMMUNICATOR_Y(nestid)  !Set the unique y-direction communicator for this domain. AFAIK, this is needed only by routine VT4_MOVE (dyn_nmm/module_STATS_FOR_MOVE.F)
+
+               !Store reference to this nest's domain pointer for global access through MODULE_SYNC_DOMAINS.
+               CALL STORE_DOMAIN_POINTER(new_nest)  !Added by Thiago
             END DO
             IF ( a_nest_was_opened ) THEN
                CALL set_overlaps ( grid )   ! find overlapping and set pointers
             END IF
+            CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)    !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
 
             ! Accumulation calculation for DFI
             CALL dfi_accumulate ( grid )
 
+            CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+            IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' calling med_before_solve_io'
             CALL med_before_solve_io ( grid , config_flags )
+            CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)    !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+
+            !Wait until the last domain in current nesting level gives I/O priviledge back to the first domain in the current nesting level.
+            !At this point, all domains in the same nesting level have completed the previous task and are synced/ready to integrate in parallel.
+            !CALL NEST_LEVEL_BARRIER(grid%id) ; IF(AM_I_FIRST_DOMAIN_IN_MY_LEVEL(grid%id) .AND. grid%id > 1) WRITE(*,*) '@@@@@ STARTING PARALLEL INTEGRATION.'
+
+            !CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id)    !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+            !WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' calling solve_interface'
             grid_ptr => grid
             DO WHILE ( ASSOCIATED( grid_ptr ) )
                CALL set_current_grid_ptr( grid_ptr )
                CALL wrf_debug( 100 , 'module_integrate: calling solve interface ' )
+
+               !Wait until the last domain in current nesting level gives I/O priviledge back to the first domain in the current nesting level.
+               !At this point, all domains in the same nesting level have completed the previous task and are synced/ready to integrate in parallel.
+               !CALL NEST_LEVEL_BARRIER(grid_ptr%id) ; IF(AM_I_FIRST_DOMAIN_IN_MY_LEVEL(grid_ptr%id) .AND. grid_ptr%id > 1 .AND. IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ STARTING PARALLEL INTEGRATION'
+               CALL NEST_LEVEL_BARRIER_PTHREAD(grid_ptr%id) ; IF(AM_I_FIRST_DOMAIN_IN_MY_LEVEL(grid_ptr%id) .AND. grid_ptr%id > 1 .AND. IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ STARTING PARALLEL INTEGRATION'
+               IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' calling solve_interface'
                CALL solve_interface ( grid_ptr ) 
+               CALL NEST_LEVEL_BARRIER_PTHREAD(grid_ptr%id) ; IF(AM_I_LAST_DOMAIN_IN_MY_LEVEL(grid_ptr%id) .AND. grid_ptr%id > 1 .AND. IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ COMPLETED PARALLEL INTEGRATION'
+               !CALL NEST_LEVEL_BARRIER(grid_ptr%id) ; IF(AM_I_LAST_DOMAIN_IN_MY_LEVEL(grid_ptr%id) .AND. grid_ptr%id > 1 .AND. IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ COMPLETED PARALLEL INTEGRATION'
+
+               CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
                CALL domain_clockadvance ( grid_ptr )
+               CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)     !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+
                CALL wrf_debug( 100 , 'module_integrate: back from solve interface ' )
                ! print lots of time-related information for testing
                ! switch this on with namelist variable self_test_domain
@@ -318,29 +383,95 @@ RECURSIVE SUBROUTINE integrate ( grid )
             END DO
             CALL set_current_grid_ptr( grid )
             CALL med_calc_model_time ( grid , config_flags )
+            !CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)   !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+
+            !Synchronize the process of incrementing variable "countCompletedDomains"
+            !CALL NEST_LEVEL_BARRIER(grid%id) ; IF(AM_I_FIRST_DOMAIN_IN_MY_LEVEL(grid%id) .AND. grid%id > 1) WRITE(*,*) '@@@@@ COMPLETED PARALLEL INTEGRATION.'
+
+            CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+            IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' calling med_after_solve_io'
             CALL med_after_solve_io ( grid , config_flags )
+            CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)    !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+
+            CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
             grid_ptr => grid
             DO WHILE ( ASSOCIATED( grid_ptr ) )
                DO kid = 1, max_nests
                  IF ( ASSOCIATED( grid_ptr%nests(kid)%ptr ) ) THEN
+                   IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' forcing nest=',grid_ptr%nests(kid)%ptr%id,'/kid=',kid
                    CALL set_current_grid_ptr( grid_ptr%nests(kid)%ptr )
-                   ! Recursive -- advance nests from previous time level to this time level.
                    CALL wrf_debug( 100 , 'module_integrate: calling med_nest_force ' )
                    CALL med_nest_force ( grid_ptr , grid_ptr%nests(kid)%ptr )
                    CALL wrf_debug( 100 , 'module_integrate: back from med_nest_force ' )
+                 END IF
+               END DO
+               grid_ptr => grid_ptr%sibling
+            END DO
+            CALL set_current_grid_ptr( grid )
+
+            !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+            IF(GET_DOMAIN_NESTING_LEVEL(grid%id) < GET_MAX_SIMULATION_NEST_LEVEL()) THEN
+                CALL CYCLE_DOMAIN_PRIVILEGE(grid%id,.TRUE.) !The last domain in current nesting level transfer priviledge the first domain in the next nesting level
+            ELSE
+                CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)        !The current domain transfers priviledge to the next domain in its nesting level
+            ENDIF
+
+            !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+            !Integrate D01's children nests in parallel
+            grid_ptr => grid
+            DO WHILE ( ASSOCIATED( grid_ptr ) )
+               !Added by Thiago to parallelize the integration step of multiple 09-03km nest-pairs.
+               !!$OMP PARALLEL DO IF(grid%id==1) PRIVATE(kid) SCHEDULE(DYNAMIC,1) NUM_THREADS(grid%num_nests)
+               DO kid = 1, max_nests
+                 IF ( ASSOCIATED( grid_ptr%nests(kid)%ptr ) ) THEN
+                   IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' integrating nest=',grid_ptr%nests(kid)%ptr%id,'/kid=',kid
+                   CALL set_current_grid_ptr( grid_ptr%nests(kid)%ptr )
+                   ! Recursive -- advance nests from previous time level to this time level.
                    grid_ptr%nests(kid)%ptr%start_subtime = &
                      domain_get_current_time(grid) - domain_get_time_step(grid)
                    grid_ptr%nests(kid)%ptr%stop_subtime = &
                      domain_get_current_time(grid)
-                   CALL integrate ( grid_ptr%nests(kid)%ptr ) 
-                   CALL wrf_debug( 100 , 'module_integrate: back from recursive call to integrate ' )
-                   IF ( .NOT. ( domain_clockisstoptime(head_grid              ) .OR. &
-                                domain_clockisstoptime(grid                   ) .OR. &
-                                domain_clockisstoptime(grid_ptr%nests(kid)%ptr) ) )  THEN
-                     CALL wrf_debug( 100 , 'module_integrate: calling med_nest_feedback ' )
-                     CALL med_nest_feedback ( grid_ptr , grid_ptr%nests(kid)%ptr , config_flags )
-                     CALL wrf_debug( 100 , 'module_integrate: back from med_nest_feedback ' )
-                   END IF
+
+                   !Added by Thiago: Domain D01 spawns p-threads to invoke INTEGRATE. All other domains invoke INTEGRATE directly.
+                   IF(.FALSE. .AND. grid%num_nests == 1) THEN
+                       CALL integrate ( grid_ptr%nests(kid)%ptr )
+                       CALL wrf_debug( 100 , 'module_integrate: back from recursive call to integrate ' )
+                   ELSE
+                       !Only D01 should reach this code since it is the only domain having possibly multiple children nests.
+                       CALL pthread_integrate_domain(grid_ptr%nests(kid)%ptr%id,ierr) !Pass the nest ID, not the grid object itself, to the "C" function.
+                       IF(ierr .NE. 0) THEN
+                           CALL WRF_ERROR_FATAL('D01 failed to spawn p-threads to integrate child nest.')
+                       ENDIF
+                   ENDIF
+                 END IF
+               END DO
+               !!$OMP END PARALLEL DO
+               grid_ptr => grid_ptr%sibling
+            END DO
+            !Added by Thiago to wait until all of D01 children' nests have been integrated
+            IF(.TRUE. .OR. grid%num_nests > 1) THEN
+                CALL wait_for_integration_done() !Wait for parallel integration to complete (i.e., all p-threads have joined).
+                CALL wrf_debug( 100 , 'module_integrate: back from recursive call to integrate ' )
+            ENDIF
+            CALL set_current_grid_ptr( grid )
+
+            !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+            !The last domain in current nesting level transfer priviledge the first domain within its nesting level for the next iteration
+            IF(GET_DOMAIN_NESTING_LEVEL(grid%id) < GET_MAX_SIMULATION_NEST_LEVEL() .AND. AM_I_LAST_DOMAIN_IN_MY_LEVEL(grid%id)) CALL ASSIGN_PRIVILEGE_TO_NEST_LEVEL(GET_DOMAIN_NESTING_LEVEL(grid%id))
+
+            !Synchronize the feedback and moving steps of every domain from their children nests
+            CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+            grid_ptr => grid
+            DO WHILE ( ASSOCIATED( grid_ptr ) )
+               DO kid = 1, max_nests
+                 IF ( ASSOCIATED( grid_ptr%nests(kid)%ptr ) ) THEN
+                   IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' feeding back nest=',grid_ptr%nests(kid)%ptr%id,'/kid=',kid
+                   CALL set_current_grid_ptr( grid_ptr%nests(kid)%ptr )
+                   IF(.NOT. (domain_clockisstoptime(head_grid) .OR. domain_clockisstoptime(grid) .OR. domain_clockisstoptime(grid_ptr%nests(kid)%ptr))) THEN
+                       CALL wrf_debug( 100 , 'module_integrate: calling med_nest_feedback ' )
+                       CALL med_nest_feedback ( grid_ptr , grid_ptr%nests(kid)%ptr , config_flags )
+                       CALL wrf_debug( 100 , 'module_integrate: back from med_nest_feedback ' )
+                   ENDIF
 #ifdef MOVE_NESTS
                    IF ( .NOT. domain_clockisstoptime( head_grid ) ) THEN
                      CALL med_nest_move ( grid_ptr , grid_ptr%nests(kid)%ptr )
@@ -351,8 +482,13 @@ RECURSIVE SUBROUTINE integrate ( grid )
                grid_ptr => grid_ptr%sibling
             END DO
             CALL set_current_grid_ptr( grid )
+            CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)    !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+
             !  Report on the timing for a single time step.
             IF ( wrf_dm_on_monitor() ) THEN
+#ifdef THREADED_INTEGRATION
+              IF(grid%id == 1) THEN   !Condition added by Thiago: Only measure timing for D01 till MODULE_TIMING is made thread-safe
+#endif
                CALL domain_clock_get ( grid, current_timestr=message2 )
 #if (EM_CORE == 1)
                if (config_flags%use_adaptive_time_step) then
@@ -364,6 +500,9 @@ RECURSIVE SUBROUTINE integrate ( grid )
                   WRITE ( message , FMT = '("main: time ",A," on domain ",I3)' ) TRIM(message2), grid%id
 #endif
                CALL end_timing ( TRIM(message) )
+#ifdef THREADED_INTEGRATION
+              ENDIF
+#endif
             END IF
             CALL med_endup_step ( grid , config_flags )
          END DO
@@ -380,21 +519,35 @@ RECURSIVE SUBROUTINE integrate ( grid )
             should_do_last_io = domain_clockisstoptime( head_grid )
             grid_ptr => grid 
             DO WHILE ( grid_ptr%id .NE. 1 )
-               IF ( domain_clockisstoptime( grid_ptr ) ) THEN
-                  should_do_last_io = .TRUE. 
-               END IF
+               IF ( domain_clockisstoptime( grid_ptr ) ) should_do_last_io = .TRUE. 
                grid_ptr => grid_ptr%parents(1)%ptr
             ENDDO
-            IF ( should_do_last_io ) THEN 
-               grid_ptr => grid 
+
+            CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
+            IF ( should_do_last_io ) THEN
+               grid_ptr => grid
                CALL med_nest_feedback ( grid_ptr%parents(1)%ptr, grid , config_flags )
                CALL med_last_solve_io ( grid , config_flags )
             ENDIF
+            CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)    !Added by Thiago to synchronize I/O access by the high-res nest-pairs integrated in parallel
          ENDIF
       ENDIF
    END IF
-   
+
 END SUBROUTINE integrate
+
+!Added by Thiago to time events in this module
+REAL*8 FUNCTION MYTIMER()
+    implicit none
+#if defined(OLD_TIMERS)
+    INTEGER :: IC,IR
+    CALL SYSTEM_CLOCK(COUNT=IC,COUNT_RATE=IR)
+    MYTIMER=REAL(IC)/REAL(IR)*1000.0
+#else
+    call hires_timer(MYTIMER)
+    MYTIMER=MYTIMER*1000
+#endif
+END FUNCTION MYTIMER
 
 END MODULE module_integrate
 

@@ -129,6 +129,10 @@ MODULE module_domain_type
       INTEGER                                             :: id
       INTEGER                                             :: domdesc
       INTEGER                                             :: communicator
+#ifdef THREADED_INTEGRATION
+      INTEGER                                             :: communicator_x !Added by Thiago to allow multiple domains to integrate in parallel by using different MPI communicators
+      INTEGER                                             :: communicator_y !Added by Thiago to allow multiple domains to integrate in parallel by using different MPI communicators
+#endif
       INTEGER                                             :: iocommunicator
       INTEGER,POINTER                                     :: mapping(:,:)
       INTEGER,POINTER                                     :: i_start(:),i_end(:)
