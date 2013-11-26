@@ -13,7 +13,7 @@
 !
 !----------------------------------------------------------------------
       USE MODULE_MODEL_CONSTANTS
-      USE MODULE_EXT_INTERNAL
+      USE MODULE_EXT_INTERNAL       !Thiago comment: Only routine INT_GET_FRESH_HANDLE is used, all calls of which are commented out.
 !----------------------------------------------------------------------
 #if defined(DM_PARALLEL) && !defined(STUBMPI)
       INCLUDE "mpif.h"
@@ -22,7 +22,7 @@
 !
       REAL,PARAMETER :: FF2=-0.64813,FF3=0.24520,FF4=-0.12189
       REAL,PARAMETER :: FFC=1.533,FBC=1.-FFC
-      REAL :: CONSERVE_MIN=0.9,CONSERVE_MAX=1.1
+      REAL :: CONSERVE_MIN=0.9,CONSERVE_MAX=1.1 !Thiago comment: Variables CONSERVE_MIN/MAX could be declared as PARAMETER.
 !
 !----------------------------------------------------------------------
 !***  CRANK-NICHOLSON OFF-CENTER WEIGHTS FOR CURRENT AND FUTURE
@@ -34,8 +34,8 @@
 !
 !***  FOR CRANK_NICHOLSON CHECK ONLY.
 !
-      INTEGER :: ITEST=47,JTEST=70
-      REAL :: ADTP,ADUP,ADVP,TTLO,TTUP,TULO,TUUP,TVLO,TVUP
+      INTEGER :: ITEST=47,JTEST=70                          !Thiago comment: Code that uses these variables is commented out.
+      REAL :: ADTP,ADUP,ADVP,TTLO,TTUP,TULO,TUUP,TVLO,TVUP  !Thiago comment: Code that uses these variables is commented out.
 !
 !----------------------------------------------------------------------
       CONTAINS
@@ -1396,7 +1396,7 @@
      &               ,IHE,IHW,IVE,IVW                                   &
      &               ,IDS,IDE,JDS,JDE,KDS,KDE                           &
      &               ,IMS,IME,JMS,JME,KMS,KME                           &
-     &               ,ITS,ITE,JTS,JTE,KTS,KTE)
+     &               ,ITS,ITE,JTS,JTE,KTS,KTE,GRID_ID)                      !Added by Thiago: Argument GRID_ID allows MPI calls to be synchronized.
 !***********************************************************************
 !$$$  SUBPROGRAM DOCUMENTATION BLOCK
 !                .      .    .
@@ -1439,6 +1439,7 @@
 !***********************************************************************
 !-----------------------------------------------------------------------
 !
+      USE MODULE_SYNC_DOMAINS   !Added by Thiago to allow synchronized execution of various parts of the model by multiple domains in parallel
       IMPLICIT NONE
 !
 !-----------------------------------------------------------------------
@@ -1468,6 +1469,7 @@
       REAL,DIMENSION(IMS:IME,JMS:JME,KMS:KME),INTENT(INOUT) :: CWM,Q,Q2
 !
       LOGICAL,INTENT(IN) :: HYDRO
+      INTEGER,INTENT(IN) :: GRID_ID                             !Added by Thiago to allow MPI calls to be synchronized
 !
 !-----------------------------------------------------------------------
 !***  LOCAL VARIABLES
@@ -1514,7 +1516,7 @@
      &                                                  ,DQST,DVOL,DWST &
      &                                                  ,E1,E2,Q1,W1
 !-----------------------------------------------------------------------
-      integer :: nunit,ier
+      integer :: nunit,ier  !Thiago comment: the code that uses SAVE variable NUNIT is commented out. For tests only.
       save nunit
 !-----------------------------------------------------------------------
 !***********************************************************************
@@ -1845,6 +1847,7 @@
 !-----------------------------------------------------------------------
 #if defined(BIT_FOR_BIT) && defined(DM_PARALLEL) && !defined(STUBMPI)
 !-----------------------------------------------------------------------
+      CALL WAIT_FOR_DOMAIN_PRIVILEGE(GRID_ID)   !Added by Thiago to synchronize execution by multiple domains
       DO N=1,6
         CALL WRF_PATCH_TO_GLOBAL_REAL(XSUMS_L(IMS,JMS,KMS,N)            &
      &,                               XSUMS_G(1,1,1,N),DOMDESC          & 
@@ -1875,6 +1878,7 @@
       ENDIF
 
       CALL WRF_DM_BCAST_BYTES(GSUMS,2*RWORDSIZE*6*(KTE-KTS+1) )
+      CALL CYCLE_DOMAIN_PRIVILEGE(GRID_ID)      !Added by Thiago to synchronize execution by multiple domains
 
 !-----------------------------------------------------------------------
 #else
@@ -1886,9 +1890,11 @@
 !
 # if defined(DM_PARALLEL) && !defined(STUBMPI)
       CALL WRF_GET_DM_COMMUNICATOR(MPI_COMM_COMP)
+      CALL WAIT_FOR_DOMAIN_PRIVILEGE(GRID_ID)   !Added by Thiago to synchronize execution by multiple domains
       CALL MPI_ALLREDUCE(XSUMS,GSUMS,6*(KTE-KTS+1)                      &
      &                  ,MPI_DOUBLE_PRECISION,MPI_SUM                   &
      &                  ,MPI_COMM_COMP,IRECV)
+      CALL CYCLE_DOMAIN_PRIVILEGE(GRID_ID)      !Added by Thiago to synchronize execution by multiple domains
 # else
       DO K=KTS,KTE
         DO N=1,6
@@ -2554,7 +2560,7 @@
       REAL,DIMENSION(IMS:IME,JMS:JME,KMS:KME) :: Q
 !
 !-----------------------------------------------------------------------
-      integer :: nunit,ier
+      integer :: nunit,ier  !Thiago comment: the code that uses SAVE variable NUNIT is commented out. For tests only.
       save nunit
 !-----------------------------------------------------------------------
 !***********************************************************************
@@ -3380,7 +3386,7 @@ real,dimension(its-5:ite+5,jts-5:jte+5,kts:kte,kss:kse):: &
 !-----------------------------------------------------------------------
       enddo ! end of the loop by the species
 !-----------------------------------------------------------------------
-                        endsubroutine adv2
+                        end subroutine adv2
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
                         subroutine mono &
 ( &
@@ -3401,6 +3407,7 @@ real,dimension(its-5:ite+5,jts-5:jte+5,kts:kte,kss:kse):: &
 !---temporary arguments-------------------------------------------------
 ,s1,tcs)
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+!USE MODULE_SYNC_DOMAINS !Added by Thiago to synchronize MPI collective calls
 implicit none
 !-----------------------------------------------------------------------
 real,parameter:: &
@@ -3498,10 +3505,10 @@ real,dimension(its-5:ite+5,jts-5:jte+5,kts:kte):: &
  dvol &                      ! grid box volume
 ,rdvol                       ! 1./grid box volume
 
-logical, save :: first=.true.
-real, save :: sumrrw_first, summass_first
+logical, save :: first=.true.               !Thiago comment: This variable is set to false by D01 and ignored by all other domains. Only used in a debug WRITE statement.
+real, save :: sumrrw_first, summass_first   !Thiago comment: This variable is set to false by D01 and ignored by all other domains. Only used in a debug WRITE statement.
 real :: summass
-double precision, save :: gsmp_first
+double precision, save :: gsmp_first        !Thiago comment: This variable is set to false by D01 and ignored by all other domains. Only used in a debug WRITE statement.
 !+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 !     steep=1.-0.040*idtad
@@ -3595,9 +3602,11 @@ double precision, save :: gsmp_first
 # if defined(DM_PARALLEL) && !defined(STUBMPI)
       CALL WRF_GET_DM_COMMUNICATOR(MPI_COMM_COMP)
       lngth=(2*kse-2*kss+2)*(KTE-KTS+1)
+      !CALL WAIT_FOR_DOMAIN_PRIVILEGE(GRID_ID) !Added by Thiago to synchronize MPI collectives by multiple domains in parallel
       CALL MPI_ALLREDUCE(XSMS,GSMS,lngth                              &
      &                  ,MPI_DOUBLE_PRECISION,MPI_SUM                   &
      &                  ,MPI_COMM_COMP,IRECV)
+      !CALL CYCLE_DOMAIN_PRIVILEGE(GRID_ID)  !Added by Thiago to synchronize MPI collectives by multiple domains in parallel
 # else
       DO K=KTS,KTE
         do ks=kss,kse
@@ -3717,9 +3726,11 @@ double precision, save :: gsmp_first
 # if defined(DM_PARALLEL) && !defined(STUBMPI)
       CALL WRF_GET_DM_COMMUNICATOR(MPI_COMM_COMP)
       lngth=1
+      !CALL WAIT_FOR_DOMAIN_PRIVILEGE(GRID_ID) !Added by Thiago to synchronize MPI collectives by multiple domains in parallel
       CALL MPI_ALLREDUCE(xsmp,gsmp,lngth                                &
      &                  ,MPI_DOUBLE_PRECISION,MPI_SUM                   &
      &                  ,MPI_COMM_COMP,IRECV)
+      !CALL CYCLE_DOMAIN_PRIVILEGE(GRID_ID)  !Added by Thiago to synchronize MPI collectives by multiple domains in parallel
 # else
       gsmp=xsmp
 # endif
@@ -3736,9 +3747,11 @@ double precision, save :: gsmp_first
 # if defined(DM_PARALLEL) && !defined(STUBMPI)
       CALL WRF_GET_DM_COMMUNICATOR(MPI_COMM_COMP)
       lngth=(2*kse-2*kss+2)*(KTE-KTS+1)
+      !CALL WAIT_FOR_DOMAIN_PRIVILEGE(GRID_ID) !Added by Thiago to synchronize MPI collectives by multiple domains in parallel
       CALL MPI_ALLREDUCE(XSMS,GSMS,lngth                                &
      &                  ,MPI_DOUBLE_PRECISION,MPI_SUM                   &
      &                  ,MPI_COMM_COMP,IRECV)
+      !CALL CYCLE_DOMAIN_PRIVILEGE(GRID_ID)  !Added by Thiago to synchronize MPI collectives by multiple domains in parallel
 # else
       DO K=KTS,KTE
         do ks=kss,kse
@@ -3798,7 +3811,7 @@ double precision, save :: gsmp_first
 !                   summass,summass_first,summass/summass_first         ! 20-22
  1000 format('global vol sums ',i6,f8.3,30d13.5)
 !zjmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
-                        endsubroutine mono
+                        end subroutine mono
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 !

@@ -33,7 +33,7 @@
 !   MACHINE : IBM SP
 !$$$  
 !-----------------------------------------------------------------------
-      USE MODULE_MPP
+      USE MODULE_MPP,ONLY : MYIS,MYIE,MYJS,MYJE         !Added by Thiago: ONLY clause added to ensure that only the specified SAVE variables are used.
       USE MODULE_RA_GFDLETA,ONLY : CAL_MON_DAY,ZENITH
 !-----------------------------------------------------------------------
 !
@@ -78,7 +78,7 @@
 !
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
-      MYIS=MAX(IDS,ITS)
+      MYIS=MAX(IDS,ITS) !Thiago comment: Variables MYIS,MYIE,MYJS,MYJE should be made local. This is not thread-safe, but will work as long as all domains within a nesting level have the same grid size.
       MYIE=MIN(IDE,ITE)
       MYJS=MAX(JDS,JTS)
       MYJE=MIN(JDE,JTE)

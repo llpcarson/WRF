@@ -149,7 +149,7 @@ MODULE MODULE_SYNC_DOMAINS
             IF(ierr .NE. 0) CALL WRF_ERROR_FATAL("Failed to duplicate compute node MPI communicator for each domain in RECURSIVE SUBROUTINE INTEGRATE.")
         ENDDO
 
-        !Initialize the "C" parallel integration p-threads driver. The current implementation does not use a p-thread pool. Instead, it spawn new p-threads every time the nests are integrated.
+        !Initialize the "C" interface needed to use Pthread-based synchronization tools.
         CALL init_pthread_sync_interface(totalDomainsInSimulation,totalStormsInSimulation,ierr)
         IF(ierr .NE. 0) THEN
             CALL WRF_ERROR_FATAL('Could not initialize the P-thread interface driver.')

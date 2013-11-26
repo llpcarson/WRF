@@ -112,7 +112,8 @@ CONTAINS
        ,DETA1,DETA2                           &
        ,IDS,IDE,JDS,JDE,KDS,KDE               &
        ,IMS,IME,JMS,JME,KMS,KME               &
-       ,ITS,ITE,JTS,JTE,KTS,KTE            )
+       ,ITS,ITE,JTS,JTE,KTS,KTE               &
+       ,GRID_ID)                                                       !Added by Thiago: Argument GRID_ID allows domains to synchronize around MPI calls.
 
     !**********************************************************************
     !$$$  SUBPROGRAM DOCUMENTATION BLOCK
@@ -136,6 +137,7 @@ CONTAINS
     !
     USE MODULE_NEST_UTIL, only : MSLP_DIAG
     USE MODULE_DM, only : wrf_dm_minloc_real, wrf_dm_maxloc_real
+    USE MODULE_SYNC_DOMAINS   !Added by Thiago to allow synchronized execution of various parts of the model by multiple domains in parallel
 
     IMPLICIT NONE
     !
@@ -150,6 +152,7 @@ CONTAINS
     REAL, DIMENSION(IMS:IME,JMS:JME),         INTENT(IN)    :: FIS,PD,HLAT,HLON
     REAL, DIMENSION(IMS:IME,JMS:JME),         INTENT(IN)    :: U10,V10
     REAL, DIMENSION(IMS:IME,JMS:JME,KMS:KME), INTENT(IN)    :: PINT,T,Q
+    INTEGER,INTENT(IN) :: GRID_ID                                      !Added by Thiago to allow domains to synchronize around MPI calls
 
     !----------------------------------------------------------------------
 
@@ -208,9 +211,11 @@ CONTAINS
     end if
 
     ! Get grid-wide extrema:
+    CALL WAIT_FOR_DOMAIN_PRIVILEGE(GRID_ID)   !Added by Thiago to synchronize execution by multiple domains
     call WRF_DM_MAXLOC_REAL(have_cen,clat,clon,zdum,icen,jcen)
     call WRF_DM_MINLOC_REAL(mingbl_mslp,plat,plon,zdum,imslp,jmslp)
     call WRF_DM_MAXLOC_REAL(maxgbl_wind,wlat,wlon,zdum,iwind,jwind)
+    CALL CYCLE_DOMAIN_PRIVILEGE(GRID_ID)      !Added by Thiago to synchronize execution by multiple domains
 
     ! Monitor process writes out values.
     if(wrf_dm_on_monitor()) then

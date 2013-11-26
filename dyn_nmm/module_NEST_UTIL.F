@@ -6,7 +6,7 @@
       MODULE module_NEST_UTIL
 !
 !----------------------------------------------------------------------
-      USE MODULE_MPP
+      USE MODULE_MPP                !Thiago comments: none of the SAVE variables in this module are used here.
       USE MODULE_STATE_DESCRIPTION
       USE MODULE_DM
 !

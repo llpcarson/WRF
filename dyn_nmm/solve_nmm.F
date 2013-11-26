@@ -13,12 +13,16 @@
 !
      &           )
 !-----------------------------------------------------------------------
-        use module_timing
+      USE MODULE_TIMING
       USE MODULE_DOMAIN,                ONLY : DOMAIN, GET_IJK_FROM_GRID
       USE MODULE_CONFIGURE,             ONLY : GRID_CONFIG_REC_TYPE
       USE MODULE_MODEL_CONSTANTS
-      USE MODULE_STATE_DESCRIPTION
-      USE MODULE_CTLBLK
+      USE MODULE_STATE_DESCRIPTION !,     ONLY : PARAM_FIRST_SCALAR,etampnew,etampold       & !Added by Thiago: ONLY clause added to ensure that only the specified non-SAVE/SAVE variables are used.
+                                   !            & ,etamp_hwrf,P_SZJ1,P_SZJ2,P_SZJ3,P_SZJ4  &
+                                   !            & ,P_spz1,P_spz2,P_spz3,P_spz4,P_qv,P_qc   &
+                                   !            & ,P_qr,P_qi,P_qs,P_qg,NUM_SZJ,NUM_moist   &
+                                   !            & ,NUM_scalar,num_chem
+      USE MODULE_CTLBLK,                ONLY : IHRST,TSPH,NBOCO,RESTRT,NEST,NUNIT_NBC       !Added by Thiago: ONLY clause added to ensure that only the specified SAVE variables are used. Removed variable "FIRST" from list and replaced it with local non-SAVE variable IS_FIRST_CALL.
       use MODULE_RANDOM,                ONLY : rand_grid_r4
 #ifdef DM_PARALLEL
       USE MODULE_DM,                    ONLY : LOCAL_COMMUNICATOR       &
@@ -38,8 +42,8 @@
       USE MODULE_BNDRY_COND,            ONLY: &
            BOCOV, MASS_BOUNDARY, MP_BULK_BOUNDARY, MP_SPECIES_BDY
       USE MODULE_PHYSICS_CALLS
-      USE MODULE_EXT_INTERNAL
-      USE MODULE_PRECIP_ADJUST
+      !USE MODULE_EXT_INTERNAL                                                          !Commented out by Thiago: no routines/variables from MODULE_EXT_INTERNAL are used.
+      USE MODULE_PRECIP_ADJUST,         ONLY: READPCP,CHKSNOW,ADJPPT                    !Added by Thiago: ONLY clause added to ensure that only the specified subroutines are invoked.
       USE MODULE_NEST_UTIL     ! USEs module_MPP (contains MYPE,NPES,MPI_COMM_COMP)
 #ifdef MOVE_NESTS
       USE MODULE_STATS_FOR_MOVE,        ONLY: STATS_FOR_MOVE
@@ -47,6 +51,7 @@
 #ifdef WRF_CHEM
       USE MODULE_INPUT_CHEM_DATA,       ONLY: GET_LAST_GAS
 #endif
+      USE MODULE_SYNC_DOMAINS   !Added by Thiago to allow synchronized execution of various parts of the model by multiple domains in parallel
 
 
 !-----------------------------------------------------------------------
@@ -95,8 +100,15 @@
       INTEGER :: I,ICLTEND,IDF,IRTN,J,JC,JDF,K,KDF,LB,N_MOIST &
      &          ,NTSD_current,L
 #ifdef HWRF
+#ifdef HWRFX
+!XUEJIN's doing
+      INTEGER                               :: kid1
+      INTEGER, PARAMETER                    :: max_dom=9
+      INTEGER,SAVE,DIMENSION(max_dom)       :: NTSD_restart1
+#else
 !zhang's doing
       INTEGER,SAVE :: NTSD_restart1,NTSD_restart2,NTSD_restart3
+#endif
 #endif
       integer :: ierr,nrand,idt
       INTEGER,SAVE :: NTSD_restart
@@ -109,12 +121,14 @@
 !
       LOGICAL :: LAST_TIME,OPERATIONAL_PHYSICS,ETAMP_PHYSICS
 !
-      CHARACTER(80) :: MESSAGE
+      CHARACTER(100) :: MESSAGE
+!
+      LOGICAL :: IS_FIRST_CALL  !Added by Thiago to replace variable MODULE_CTLBLK:FIRST and allow multiple domains to run the initialization code in parallel.
 !
 !***  For precip assimilation:
       INTEGER :: ISTAT,DOM,one
       LOGICAL :: HF
-      REAL,ALLOCATABLE,SAVE,DIMENSION(:,:,:) :: PPTDAT
+      REAL,ALLOCATABLE,SAVE,DIMENSION(:,:,:) :: PPTDAT  !Thiago comment: Precipitation assimilation does not work for multiple domains, only single-domain (D01-only) runs.
 !
 !-----------------------------------------------------------------------
 !***  For physics compatibility with other packages
@@ -131,23 +145,31 @@
 !-----------------------------------------------------------------------
 !***  TIMING VARIABLES
 !-----------------------------------------------------------------------
-      real,save :: solve_tim,exch_tim,pdte_tim,adve_tim,vtoa_tim        &
-     &,            vadz_tim,hadz_tim,eps_tim,vad2_tim,had2_tim          &
-     &,            radiation_tim,rdtemp_tim,turbl_tim,cltend_tim        &
-     &,            cucnvc_tim,gsmdrive_tim,hdiff_tim,bocoh_tim          &
-     &,            pfdht_tim,ddamp_tim,bocov_tim,uv_htov_tim,sum_tim    &
+      real,save,DIMENSION(max_dom) :: solve_tim,exch_tim,pdte_tim,adve_tim,vtoa_tim        &    !Modified by Thiago. Added DIMENSION(max_dom) to all timing variables. These should be migrated to the grid object.
+                        &,            vadz_tim,hadz_tim,eps_tim,vad2_tim,had2_tim          &
+                        &,            radiation_tim,rdtemp_tim,turbl_tim,cltend_tim        &
+                        &,            cucnvc_tim,gsmdrive_tim,hdiff_tim,bocoh_tim          &
+                        &,            pfdht_tim,ddamp_tim,bocov_tim,uv_htov_tim,sum_tim    &
 #ifdef HWRF
-     &,            adjppt_tim,sst_tim,flux_tim
+                        &,            adjppt_tim,sst_tim,flux_tim
 #else
-     &,            adjppt_tim
+                        &,            adjppt_tim
 #endif
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      real,save :: loadimbal_tim,previmbal_tim
+      real,save,DIMENSION(max_dom) :: loadimbal_tim,previmbal_tim   !Modified by Thiago. Added DIMENSION(max_dom) to all timing variables. These should be migrated to the grid object.
 #endif
-      real,save :: exch_tim_max
-      real :: btim,btimx
+      real,save,DIMENSION(max_dom) :: exch_tim_max                  !Modified by Thiago. Added DIMENSION(max_dom) to all timing variables. These should be migrated to the grid object.
+      real :: btim,btimx,startTime,endTime                          !Added by Thiago: variables "startTime" and "endTime" measure timing in regions that were not measured before
       real :: et_max,this_tim
       integer :: n_print_time
+      integer :: milli_midnight                                     !Added by Thiago to time-stamp events.
+      real :: ti,tf                                                 !Added by Thiago to time-stamp events.
+      logical :: isVerboseHaloTime = .FALSE.                        !Added by Thiago to allow/disallow timing results to be displayed
+
+!Added by Thiago to be able to invoke MPI routines
+#if defined(DM_PARALLEL) && !defined(STUBMPI)
+      INCLUDE "mpif.h"
+#endif
 !
 #ifdef RSL
       integer rsl_internal_milliclock
@@ -233,10 +255,17 @@
       IF(NTSD_current==0)THEN
         IF(GRID%RESTART.AND.GRID%TSTART>0.)THEN
 #ifdef HWRF
+#ifdef HWRFX
+!XUEJIN's doing
+          do kid1=1,max_dom
+          if( grid%id .eq. kid1 ) NTSD_restart1(kid1)=INT(grid%TSTART*3600./GRID%DT+0.5)
+          end do
+#else
 !zhang's doing: temporarily hardwired for two domains
           if( grid%id .eq. 1 ) NTSD_restart1=INT(grid%TSTART*3600./GRID%DT+0.5)
           if( grid%id .eq. 2 ) NTSD_restart2=INT(grid%TSTART*3600./GRID%DT+0.5)
           if( grid%id .eq. 3 ) NTSD_restart3=INT(grid%TSTART*3600./GRID%DT+0.5)
+#endif
 #endif
           IHRST=grid%nstart_hour
           NTSD_restart=grid%ntsd
@@ -244,20 +273,32 @@
           IHRST=GRID%GMT
           grid%nstart_hour=IHRST
 #ifdef HWRF
+#ifdef HWRFX
+!XUEJIN's doing
+          NTSD_restart1=0
+#else
 !zhang's doing
           NTSD_restart1=0
           NTSD_restart2=0
           NTSD_restart3=0
+#endif
 #else
           NTSD_restart=0
 #endif
         ENDIF
       ENDIF
 #ifdef HWRF
+#ifdef HWRFX
+!XUEJIN's doing
+      do kid1=1,max_dom
+      if( grid%id .eq. kid1 ) grid%ntsd=NTSD_restart1(kid1)+NTSD_current
+      end do
+#else
 !zhang's doing
       if( grid%id .eq. 1 ) grid%ntsd=NTSD_restart1+NTSD_current
       if( grid%id .eq. 2 ) grid%ntsd=NTSD_restart2+NTSD_current
       if( grid%id .eq. 3 ) grid%ntsd=NTSD_restart3+NTSD_current
+#endif
 #else
       grid%ntsd=NTSD_restart+NTSD_current
 #endif
@@ -265,11 +306,11 @@
 !
 !-----------------------------------------------------------------------
 !
-!!!!! IF(WRF_DM_ON_MONITOR() )THEN
-        WRITE(MESSAGE,125)grid%ntsd,grid%ntsd*GRID%DT/3600.
-  125   FORMAT(' SOLVE_NMM: TIMESTEP IS ',I5,'   TIME IS ',F7.3,' HOURS')
+        startTime=timef()                                                               !Added by Thiago to time the execution of SOLVE_NMM
+        WRITE(MESSAGE,126)grid%id,grid%ntsd,grid%ntsd*GRID%DT/3600.0,startTime*1.e-3    !Thiago added domain ID and timestamp to the message
         CALL WRF_MESSAGE(TRIM(MESSAGE))
-!!!!  ENDIF
+  126   FORMAT(' SOLVE_NMM: DOMAIN ',I2,' TIMESTEP ',I5,' HOUR ',F7.3,' ON CLOCKTIME ',F20.6)     !Thiago added domain ID and timestamp to the message
+
 !
 !-----------------------------------------------------------------------
 !
@@ -297,7 +338,9 @@
 !***  NUMBER OF TILES.
 !***  SEE: http://www.mmm.ucar.edu/wrf/WG2/topics/settiles
 !
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE SET_TILES' !Added by Thiago for debug purposes
       CALL SET_TILES(GRID,IDS,IDE,JDS,JDE,IPS,IPE,JPS,JPE)
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER SET_TILES' !Added by Thiago for debug purposes
 !
 !-----------------------------------------------------------------------
 !***  SET FLAG FOR NAM, HRW, or HWRF (Ferrier-based) microphysics
@@ -408,41 +451,46 @@
 !-----------------------------------------------------------------------
 !***  SET TIMING VARIABLES TO ZERO AT START OF FORECAST.
 !-----------------------------------------------------------------------
-      if(grid%ntsd==0)then
-        solve_tim=0.
-        exch_tim=0.
-        pdte_tim=0.
-        adve_tim=0.
-        vtoa_tim=0.
-        vadz_tim=0.
-        hadz_tim=0.
-        eps_tim=0.
-        vad2_tim=0.
-        had2_tim=0.
-        radiation_tim=0.
-        rdtemp_tim=0.
-        turbl_tim=0.
-        cltend_tim=0.
-        cucnvc_tim=0.
-        gsmdrive_tim=0.
-        hdiff_tim=0.
-        bocoh_tim=0.
-        pfdht_tim=0.
-        ddamp_tim=0.
-        bocov_tim=0.
-        uv_htov_tim=0.
-        exch_tim_max=0.
-        adjppt_tim=0.
+      !if(grid%ntsd==0)then
+      if(.TRUE.)then
+        solve_tim(grid%id)=0.
+        exch_tim(grid%id)=0.
+        pdte_tim(grid%id)=0.
+        adve_tim(grid%id)=0.
+        vtoa_tim(grid%id)=0.
+        vadz_tim(grid%id)=0.
+        hadz_tim(grid%id)=0.
+        eps_tim(grid%id)=0.
+        vad2_tim(grid%id)=0.
+        had2_tim(grid%id)=0.
+        radiation_tim(grid%id)=0.
+        rdtemp_tim(grid%id)=0.
+        turbl_tim(grid%id)=0.
+        cltend_tim(grid%id)=0.
+        cucnvc_tim(grid%id)=0.
+        gsmdrive_tim(grid%id)=0.
+        hdiff_tim(grid%id)=0.
+        bocoh_tim(grid%id)=0.
+        pfdht_tim(grid%id)=0.
+        ddamp_tim(grid%id)=0.
+        bocov_tim(grid%id)=0.
+        uv_htov_tim(grid%id)=0.
+        exch_tim_max(grid%id)=0.
+        adjppt_tim(grid%id)=0.
+#ifdef HWRF
+        sst_tim(grid%id)=0.  !Added by Thiago for ocean-coupler timing
+        flux_tim(grid%id)=0. !Added by Thiago for ocean-coupler timing
+#endif
 #ifdef NMM_FIND_LOAD_IMBALANCE
-        previmbal_tim=0.
-        loadimbal_tim=0.
+        previmbal_tim(grid%id)=0.
+        loadimbal_tim(grid%id)=0.
 #endif
       endif
 !-----------------------------------------------------------------------
       N_MOIST=NUM_MOIST
 
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(previmbal_tim)
+      call blockf(previmbal_tim(grid%id))
 #endif
 !
       DO J=MYJS_P4,MYJE_P4
@@ -486,11 +534,22 @@
 !
       CALL wrf_debug ( 100 , 'nmm: in patch' )
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
       btimx=timef()
+
+!      GOTO 3000
+
+!Thiago comment: The HALO_NMM_ZZ call below is no longer used.
 !#ifdef DM_PARALLEL
+!     ti=timef()
+!     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+!     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_ZZ.inc' !Added by Thiago for debug purposes
 !#    include "HALO_NMM_ZZ.inc"
+!     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_ZZ.inc' !Added by Thiago for debug purposes
+!     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+!     tf=timef()
+!     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_ZZ ',(tf-ti)*1.e-3
 !#endif
 
       IF(GRID%ID/=1)THEN
@@ -527,12 +586,14 @@
 !-----------------------------------------------------------------------
 
       IF (grid%ntsd==0) THEN
+        CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize access by multiple domains in parallel
         IF (GRID%PCPFLG) THEN
-          CALL READPCP(PPTDAT,grid%ddata,grid%lspa                                &
+          CALL READPCP(PPTDAT,grid%ddata,grid%lspa                      &
      &      ,IDS,IDE,JDS,JDE,KDS,KDE                                    &
      &      ,IMS,IME,JMS,JME,KMS,KME                                    &
      &      ,ITS,ITE,JTS,JTE,KTS,KTE)
         ENDIF
+        CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize access by multiple domains in parallel
       ENDIF
 !-----------------------------------------------------------------------
 !
@@ -550,7 +611,9 @@
          IDT=MOD(grid%NTSD,nrand)
  
          IF(IDT.EQ.0 .OR. grid%NTSD .EQ. 0)THEN
+#ifndef THREADED_INTEGRATION
             call start_timing
+#endif
             call wrf_message('Update random numbers...')
             one=1
 
@@ -569,7 +632,9 @@
             write(message,'(A,": random(",I0,",",I0,") = ",E15.10)') 'after call',imid,jmid,grid%random(imid,jmid)
             call wrf_debug(3,message)
 
+#ifndef THREADED_INTEGRATION
             call end_timing('Updating random numbers')
+#endif
          ENDIF    ! for IF(IDT.EQ.0 .OR. NTSD .EQ. 0)
       ENDIF randif
 !-----------------------------------------------------------------------
@@ -594,16 +659,21 @@
      &            ,ITS,ITE,JTS,JTE,KTS,KTE)
 !-----------------------------------------------------------------------
 !
+      !Added by Thiago: Initialize the variable IS_FIRST_CALL to false before initialization code
+      IS_FIRST_CALL = .FALSE.   !Assume this is not the first call to SOLVE_NMM
+
 !!#ifdef HWRF
 !!!zhang
 !!      IF(NTSD_current==0)THEN
 !!#else
       IF(grid%ntsd==0)THEN
 !!#endif
-        FIRST=.TRUE.
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' DOING INITIALIZATION.' !Added by Thiago for debug purposes
+        !FIRST=.TRUE.           !Commented out by Thiago to replace MODULE_CTLBLK:FIRST with local non-SAVE variable IS_FIRST_CALL.
+        IS_FIRST_CALL = .TRUE.  !Thiago replaced MODULE_CTLBLK:FIRST with local non-SAVE variable IS_FIRST_CALL.
 !       call hpm_init()
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      CALL blockf(loadimbal_tim(grid%id))
 #endif
         btimx=timef()
 !emc_2010_bugfix_h50
@@ -666,18 +736,29 @@
 !
 !-----------------------------------------------------------------------
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
+
+ti=timef()
+CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
 #ifdef DM_PARALLEL
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_A.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_A.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_A.inc' !Added by Thiago for debug purposes
 #endif
 !
 !-----------------------------------------------------------------------
 #ifdef DM_PARALLEL
       IF (.NOT.ETAMP_PHYSICS) THEN
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_A_3.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_A_3.inc"
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_A_3.inc' !Added by Thiago for debug purposes
       ENDIF
 #endif
+CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+tf=timef()
+IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_A-A_3 ',(tf-ti)*1.e-3
+
 !-----------------------------------------------------------------------
 !***  FIRST STEP INITIALIZATION OF PASSIVE SUBSTANCE VARIABLES
 !-----------------------------------------------------------------------
@@ -737,25 +818,31 @@
 !-----------------------------------------------------------------------
 !***  USE THE FOLLOWING VARIABLES TO KEEP TRACK OF EXCHANGE TIMES.
 !-----------------------------------------------------------------------
-        exch_tim=exch_tim+timef()-btimx
+        exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !       this_tim=timef()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max           &
 !    &                    ,mpi_comm_comp,irtn)
-!       exch_tim_max=exch_tim_max+et_max
+!       exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !-----------------------------------------------------------------------
 !
+
 #ifdef HWRF
 !zhang's doing
        if(GRID%RESTART) then
-       FIRST=.FALSE.
+           !FIRST=.FALSE.           !Commented out by Thiago to replace MODULE_CTLBLK:FIRST with local non-SAVE variable IS_FIRST_CALL.
+           IS_FIRST_CALL = .FALSE.  !Thiago replaced MODULE_CTLBLK:FIRST with local non-SAVE variable IS_FIRST_CALL.
+           IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' END INITIALIZATION (RESTART MODE).' !Added by Thiago for debug purposes
        else
-       GO TO 2003
+           IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' END INITIALIZATION (GOTO 2003).' !Added by Thiago for debug purposes
+           GO TO 2003
        endif
 !end of zhang's doing
 #else
         GO TO 2003
 #endif
-      ENDIF
+      ENDIF !End of time-step 0 initializations
+
+
 !
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
@@ -763,6 +850,10 @@
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 #ifdef HWRF
+#ifdef HWRFX
+      write(message,*)' No Ocean Coupling Run'
+      call wrf_message(trim(message))
+#else
 ! Coupling insertion:->
       call ATM_TSTEP_INIT(NTSD_current,grid%NPHS,GRID%ID,grid%NPHS*grid%dt, &
       ids,idf,jds,jdf,its,ite,jts,jte,ims,ime,jms,jme,           &
@@ -773,27 +864,39 @@
 !<-:coupling insertion
 !
 #endif
+#endif
 !-----------------------------------------------------------------------
 !***  PRESSURE TENDENCY, SIGMA DOT, VERTICAL PART OF OMEGA-ALPHA
 !-----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
       btimx=timef()
 !-----------------
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_D.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_D.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_D.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_D ',(tf-ti)*1.e-3
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
+      exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !     this_tim=timef()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
-!     exch_tim_max=exch_tim_max+et_max
+!     exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
       btimx=timef()
 !
+!     GOTO 3000
+
+
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE PDTE' !Added by Thiago for debug purposes
       CALL PDTE(                                                        &
 #ifdef DM_PARALLEL
      &            GRID,MYPE,MPI_COMM_COMP,                              &
@@ -805,31 +908,40 @@
      &           ,IDS,IDF,JDS,JDF,KDS,KDE                               &
      &           ,IMS,IME,JMS,JME,KMS,KME                               &
      &           ,ITS,ITE,JTS,JTE,KTS,KTE)
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER PDTE' !Added by Thiago for debug purposes
 
 
-      pdte_tim=pdte_tim+timef()-btimx
+      pdte_tim(grid%id)=pdte_tim(grid%id)+timef()-btimx
 !
 !-----------------------------------------------------------------------
 !***  ADVECTION OF grid%t, grid%u, AND grid%v
 !-----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
       btimx=timef()
 !-----------------
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_F/F1.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_F.inc"
 #    include "HALO_NMM_F1.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_F/F1.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_F-F_1 ',(tf-ti)*1.e-3
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
+      exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !     this_tim=timef()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
-!     exch_tim_max=exch_tim_max+et_max
+!     exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
       btimx=timef()
 !
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE ADVE' !Added by Thiago for debug purposes
       CALL ADVE(grid%ntsd,GRID%DT,grid%deta1,grid%deta2,grid%pdtop                          &
      &         ,grid%curv,grid%f,grid%fad,grid%f4d,grid%em_loc,grid%emt_loc,grid%en,grid%ent,grid%dx_nmm,grid%dy_nmm      &
      &         ,grid%hbm2,grid%vbm2                                               &
@@ -844,8 +956,11 @@
      &         ,IDS,IDF,JDS,JDF,KDS,KDE                                 &
      &         ,IMS,IME,JMS,JME,KMS,KME                                 &
      &         ,ITS,ITE,JTS,JTE,KTS,KTE)
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER ADVE' !Added by Thiago for debug purposes
 !
-      adve_tim=adve_tim+timef()-btimx
+      adve_tim(grid%id)=adve_tim(grid%id)+timef()-btimx
+
+
 !
 !-----------------------------------------------------------------------
 !***  PASSIVE SUBSTANCE WORKING PART
@@ -857,7 +972,7 @@
 !
 !mp - allow for it to be applied in the no-physics realm
         IF(.NOT.ETAMP_PHYSICS.and.CONFIG_FLAGS%MP_PHYSICS/=0) THEN
-          WRITE( wrf_err_message , * ) 'EULER advection works only with ETAMPNEW microphysics.'
+          WRITE( wrf_err_message , * ) "EULER advection works only with ETAMPNEW microphysics."
           CALL wrf_error_fatal ( wrf_err_message )
         ENDIF
 !
@@ -865,13 +980,20 @@
         idtadt_block: IF(MOD(grid%ntsd,IDTADT)==0) THEN
 !-----------------------------------------------------------------------
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
           btimx=timef()
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_I.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_I.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_I.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_I ',(tf-ti)*1.e-3
 #endif
-          exch_tim=exch_tim+timef()-btimx
+          exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !
           btimx=timef()
 !
@@ -899,9 +1021,19 @@
             ENDDO
           ENDDO
 !
+     !startTime=timef()
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_TRACERS.inc' !Added by Thiago for debug purposes
 #    include "HALO_TRACERS.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_TRACERS.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_TRACERS1 ',(tf-ti)*1.e-3
 #endif
+     !exch_tim(grid%id)=exch_tim(grid%id)+timef()-startTime
+
           CALL ADV2                &
           (grid%upstrm                  &
           ,MYPE,PARAM_FIRST_SCALAR,NUM_SZJ &
@@ -925,8 +1057,18 @@
           ,grid%fne,grid%fse,grid%few,grid%fns,S1Z,TCS)
 !
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_TRACERS.inc' !Added by Thiago for debug purposes
 #    include "HALO_TRACERS.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_TRACERS.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_TRACERS2 ',(tf-ti)*1.e-3
 #endif
+
+          ti=timef()
+          CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id)
           CALL MONO &
           (         &
 #if defined(DM_PARALLEL)
@@ -945,7 +1087,10 @@
           ,SZJ                                  &
           !temporary arguments
           ,S1Z,TCS)
-!
+          CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)
+          tf=timef()
+          IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*) 'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' MONO ',(tf-ti)*1.e-3
+
           DO KS=PARAM_FIRST_SCALAR,NUM_SZJ ! loop by species
             DO K=KTS,KTE
               DO J=MYJS2,MYJE2
@@ -1036,7 +1181,7 @@
           ENDDO
         ENDIF
 !
-        had2_tim=had2_tim+timef()-btimx
+        had2_tim(grid%id)=had2_tim(grid%id)+timef()-btimx
 !-----------------------------------------------------------------------
 !
         ENDIF idtadt_block
@@ -1054,13 +1199,14 @@
 !
 !-----------------------------------------------------------------------
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
         btimx=timef()
 #ifdef DM_PARALLEL
+     !Thiago's comment: No synchronization is needed here because this is WRF_CHEM code
 #    include "HALO_NMM_I_2.inc"
 #endif
-        exch_tim=exch_tim+timef()-btimx
+        exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !
         btimx=timef()
 !
@@ -1095,7 +1241,7 @@
         ,CHE,CHP                 &
         !temporary arguments
         ,grid%fne,grid%fse,grid%few,grid%fns,CH1,TCC)
-!
+
         CALL MONO &
         (         &
 #if defined(DM_PARALLEL)
@@ -1114,7 +1260,7 @@
         ,CHE                     &
         !temporary arguments
         ,CH1,TCC)
-!
+
         DO KS=1,NUM_CHEM
           DO K=KTS,KTE
             DO J=JMS,JME
@@ -1137,6 +1283,7 @@
 !
       btimx=timef()
 !
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE VTOA' !Added by Thiago for debug purposes
       CALL VTOA(                                                        &
      &          grid%ntsd,GRID%DT,grid%pt,grid%eta2                                    &
      &         ,grid%hbm2,grid%ef4t                                               &
@@ -1146,8 +1293,9 @@
      &         ,IDS,IDF,JDS,JDF,KDS,KDE                                 &
      &         ,IMS,IME,JMS,JME,KMS,KME                                 &
      &         ,ITS,ITE,JTS,JTE,KTS,KTE)
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER VTOA' !Added by Thiago for debug purposes
 !
-      vtoa_tim=vtoa_tim+timef()-btimx
+      vtoa_tim(grid%id)=vtoa_tim(grid%id)+timef()-btimx
 !
 !-----------------------------------------------------------------------
 !***  VERTICAL ADVECTION OF HEIGHT
@@ -1155,9 +1303,7 @@
 !
       btimx=timef()
 !
-
-
-
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE VADZ' !Added by Thiago for debug purposes
       CALL VADZ(grid%ntsd,GRID%DT,grid%fis,GRID%SIGMA,grid%dfl,grid%hbm2                    &
      &         ,grid%deta1,grid%deta2,grid%pdtop                                       &
      &         ,grid%pint,grid%pdsl,grid%pdslo,grid%petdt                                   &
@@ -1166,30 +1312,39 @@
      &         ,IDS,IDF,JDS,JDF,KDS,KDE                                 &
      &         ,IMS,IME,JMS,JME,KMS,KME                                 &
      &         ,ITS,ITE,JTS,JTE,KTS,KTE)
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER VADZ' !Added by Thiago for debug purposes
 
-      vadz_tim=vadz_tim+timef()-btimx
+      vadz_tim(grid%id)=vadz_tim(grid%id)+timef()-btimx
 !
 !-----------------------------------------------------------------------
 !***  HORIZONTAL ADVECTION OF HEIGHT
 !-----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
       btimx=timef()
 !-----------------
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_G.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_G.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_G.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_G ',(tf-ti)*1.e-3
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
+      exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !     this_tim=timef()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
-!     exch_tim_max=exch_tim_max+et_max
+!     exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
       btimx=timef()
 !
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HADZ' !Added by Thiago for debug purposes
       CALL HADZ(grid%ntsd,GRID%DT,grid%hydro,grid%hbm2,grid%deta1,grid%deta2,grid%pdtop               &
      &         ,grid%dx_nmm,grid%dy_nmm,grid%fad                                       &
      &         ,grid%few,grid%fns,grid%fne,grid%fse                                         &
@@ -1198,31 +1353,39 @@
      &         ,IDS,IDF,JDS,JDF,KDS,KDE                                 &
      &         ,IMS,IME,JMS,JME,KMS,KME                                 &
      &         ,ITS,ITE,JTS,JTE,KTS,KTE)
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HADZ' !Added by Thiago for debug purposes
 !
-      hadz_tim=hadz_tim+timef()-btimx
+      hadz_tim(grid%id)=hadz_tim(grid%id)+timef()-btimx
 !
 !-----------------------------------------------------------------------
 !***  ADVECTION OF grid%w
 !-----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
       btimx=timef()
 !-----------------
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_H.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_H.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_H.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_H ',(tf-ti)*1.e-3
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
+      exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !     this_tim=timef()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
-!     exch_tim_max=exch_tim_max+et_max
+!     exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
       btimx=timef()
 !
-
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE EPS' !Added by Thiago for debug purposes
       CALL EPS(grid%ntsd,GRID%DT,grid%hydro,grid%dx_nmm,grid%dy_nmm,grid%fad                     &
      &        ,grid%aeta1,grid%deta1,grid%deta2,grid%pdtop,grid%pt                                     &
      &        ,grid%hbm2,grid%hbm3                                                &
@@ -1236,8 +1399,9 @@
      &        ,IDS,IDF,JDS,JDF,KDS,KDE                                  &
      &        ,IMS,IME,JMS,JME,KMS,KME                                  &
      &        ,ITS,ITE,JTS,JTE,KTS,KTE)
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER EPS' !Added by Thiago for debug purposes
 !
-      eps_tim=eps_tim+timef()-btimx
+      eps_tim(grid%id)=eps_tim(grid%id)+timef()-btimx
 !
 !-----------------------------------------------------------------------
 !
@@ -1251,6 +1415,7 @@
         btimx=timef()
 !
         vad2_micro_check: IF (ETAMP_PHYSICS) THEN
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE VAD2' !Added by Thiago for debug purposes
           CALL VAD2(grid%ntsd,GRID%DT,GRID%IDTAD,grid%dx_nmm,grid%dy_nmm               &
      &             ,grid%aeta1,grid%aeta2,grid%deta1,grid%deta2,grid%pdsl,grid%pdtop,grid%hbm2             &
      &             ,grid%q,grid%q2,grid%cwm,grid%petdt                                      &
@@ -1261,8 +1426,10 @@
      &             ,IDS,IDF,JDS,JDF,KDS,KDE                             &
      &             ,IMS,IME,JMS,JME,KMS,KME                             &
      &             ,ITS,ITE,JTS,JTE,KTS,KTE)
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER VAD2' !Added by Thiago for debug purposes
 !
         ELSE vad2_micro_check
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE 1xVAD2_SCAL' !Added by Thiago for debug purposes
           CALL VAD2_SCAL(grid%ntsd,GRID%DT,GRID%IDTAD,grid%dx_nmm,grid%dy_nmm          &
      &                  ,grid%aeta1,grid%aeta2,grid%deta1,grid%deta2,grid%pdsl,grid%pdtop             &
      &                  ,grid%hbm2                                           &
@@ -1275,7 +1442,9 @@
      &                  ,IDS,IDF,JDS,JDF,KDS,KDE                        &
      &                  ,IMS,IME,JMS,JME,KMS,KME                        &
      &                  ,ITS,ITE,JTS,JTE,KTS,KTE)                              
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER 1xVAD2_SCAL' !Added by Thiago for debug purposes
      
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE 2xVAD2_SCAL' !Added by Thiago for debug purposes
           CALL VAD2_SCAL(grid%ntsd,GRID%DT,GRID%IDTAD,grid%dx_nmm,grid%dy_nmm          &
      &                  ,grid%aeta1,grid%aeta2,grid%deta1,grid%deta2,grid%pdsl,grid%pdtop             &
      &                  ,grid%hbm2                                           &
@@ -1288,7 +1457,9 @@
      &                  ,IDS,IDF,JDS,JDF,KDS,KDE                        &
      &                  ,IMS,IME,JMS,JME,KMS,KME                        &
      &                  ,ITS,ITE,JTS,JTE,KTS,KTE)
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER 2xVAD2_SCAL' !Added by Thiago for debug purposes
 !
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE 3xVAD2_SCAL' !Added by Thiago for debug purposes
           CALL VAD2_SCAL(grid%ntsd,GRID%DT,GRID%IDTAD,grid%dx_nmm,grid%dy_nmm          &
      &                  ,grid%aeta1,grid%aeta2,grid%deta1,grid%deta2,grid%pdsl,grid%pdtop             &
      &                  ,grid%hbm2                                           &
@@ -1301,6 +1472,7 @@
      &                  ,IDS,IDF,JDS,JDF,KDS,KDE                        &
      &                  ,IMS,IME,JMS,JME,KMS,KME                        &
      &                  ,ITS,ITE,JTS,JTE,KTS,KTE)
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER 3xVAD2_SCAL' !Added by Thiago for debug purposes
 !
 
           DO K=KTS,KTE
@@ -1313,7 +1485,7 @@
 !
         ENDIF vad2_micro_check
 !
-        vad2_tim=vad2_tim+timef()-btimx
+        vad2_tim(grid%id)=vad2_tim(grid%id)+timef()-btimx
 !
       ENDIF
 !    
@@ -1323,33 +1495,47 @@
 !
       idtad_block: IF(MOD(grid%ntsd,GRID%IDTAD)==0)THEN
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
         btimx=timef()
 !-----------------
+ti=timef()
+CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
 #ifdef DM_PARALLEL
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_I.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_I.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_I.inc' !Added by Thiago for debug purposes
 #endif
 !
 #ifdef DM_PARALLEL
         IF (.NOT.ETAMP_PHYSICS) THEN
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_I_3.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_I_3.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_I_3.inc' !Added by Thiago for debug purposes
         ENDIF
 #endif
+CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+tf=timef()
+IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_I-I_3 ',(tf-ti)*1.e-3
+
 !
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
+        exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !       this_tim=timef()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max           &
 !    &                    ,mpi_comm_comp,irtn)
-!       exch_tim_max=exch_tim_max+et_max
+!       exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
         btimx=timef()
 !
 !-----------------------------------------------------------------------
+        !CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id)
         had2_micro_check: IF (ETAMP_PHYSICS) THEN
 !-----------------------------------------------------------------------
 !
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HAD2' !Added by Thiago for debug purposes
+          ti=timef()
+          !CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize
           CALL HAD2(                                                   &
 #if defined(DM_PARALLEL)
      &              GRID%DOMDESC,                                      &
@@ -1364,7 +1550,11 @@
      &             ,grid%ihe,grid%ihw,grid%ive,grid%ivw                                    &
      &             ,IDS,IDF,JDS,JDF,KDS,KDE                            &
      &             ,IMS,IME,JMS,JME,KMS,KME                            &
-     &             ,ITS,ITE,JTS,JTE,KTS,KTE)
+     &             ,ITS,ITE,JTS,JTE,KTS,KTE,grid%id)  !Modified by Thiago. Passed additional GRID%ID argument that allows MPI calls to be synchronized.
+          !CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize
+          tf=timef()
+          IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HAD2 ',(tf-ti)*1.e-3
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HAD2' !Added by Thiago for debug purposes
 !
 !***  UPDATE MOIST ARRAY.
 !***  REMEMBER THAT MOIST IS ONLY USED WITH THE PHYSICS AND THUS
@@ -1426,6 +1616,9 @@
         ELSE had2_micro_check
 !-----------------------------------------------------------------------
 !
+          ti=timef()
+          CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE 1xHAD2_SCAL' !Added by Thiago for debug purposes
           CALL HAD2_SCAL(                                              &
 #if defined(DM_PARALLEL)
      &                   GRID%DOMDESC,                                 &
@@ -1442,7 +1635,9 @@
      &                  ,IDS,IDF,JDS,JDF,KDS,KDE                       &
      &                  ,IMS,IME,JMS,JME,KMS,KME                       &
      &                  ,ITS,ITE,JTS,JTE,KTS,KTE)
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER 1xHAD2_SCAL' !Added by Thiago for debug purposes
 !        
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE 2xHAD2_SCAL' !Added by Thiago for debug purposes
           CALL HAD2_SCAL(                                              &
 #if defined(DM_PARALLEL)
      &                   GRID%DOMDESC,                                 &
@@ -1459,7 +1654,9 @@
      &                  ,IDS,IDF,JDS,JDF,KDS,KDE                       &
      &                  ,IMS,IME,JMS,JME,KMS,KME                       &
      &                  ,ITS,ITE,JTS,JTE,KTS,KTE)
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER 2xHAD2_SCAL' !Added by Thiago for debug purposes
 !
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE 3xHAD2_SCAL' !Added by Thiago for debug purposes
           CALL HAD2_SCAL(                                              &
 #if defined(DM_PARALLEL)
      &                   GRID%DOMDESC,                                 &
@@ -1475,7 +1672,11 @@
      &                  ,NUM_SCALAR,2                                  &
      &                  ,IDS,IDF,JDS,JDF,KDS,KDE                       &
      &                  ,IMS,IME,JMS,JME,KMS,KME                       &
-     &                  ,ITS,ITE,JTS,JTE,KTS,KTE)                             
+     &                  ,ITS,ITE,JTS,JTE,KTS,KTE)
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER 3xHAD2_SCAL' !Added by Thiago for debug purposes
+          CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize
+          tf=timef()
+          IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HAD2_SCAL ',(tf-ti)*1.e-3
 !    
           DO K=KTS,KTE 
           DO J=MYJS,MYJE
@@ -1484,11 +1685,13 @@
           ENDDO
           ENDDO    
           ENDDO   
+
 !
 !-----------------------------------------------------------------------
         ENDIF had2_micro_check
+        !CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)
 !-----------------------------------------------------------------------
-        had2_tim=had2_tim+timef()-btimx
+        had2_tim(grid%id)=had2_tim(grid%id)+timef()-btimx
 !-----------------------------------------------------------------------
 !
       ENDIF idtad_block
@@ -1529,12 +1732,15 @@
 !
         btimx=timef()
         IF(OPERATIONAL_PHYSICS)THEN
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE UPDATE_MOIST' !Added by Thiago for debug purposes
           CALL UPDATE_MOIST(MOIST,grid%q,grid%cwm,grid%f_ice,grid%f_rain,N_MOIST           &
      &                     ,IDS,IDF,JDS,JDF,KDS,KDE                    &
      &                     ,IMS,IME,JMS,JME,KMS,KME                    &
      &                     ,ITS,ITE,JTS,JTE,KTS,KTE)
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER UPDATE_MOIST' !Added by Thiago for debug purposes
         ENDIF
 !
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE RADIATION' !Added by Thiago for debug purposes
         CALL RADIATION(NTSD_rad,GRID%DT,GRID%JULDAY,GRID%JULYR         &
      &                ,GRID%XTIME,GRID%JULIAN                          &
      &                ,IHRST,GRID%NPHS                                 &
@@ -1563,6 +1769,7 @@
      &                ,IDS,IDF,JDS,JDF,KDS,KDE                         &
      &                ,IMS,IME,JMS,JME,KMS,KME                         &
      &                ,ITS,ITE,JTS,JTE,KTS,KTE)
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER RADIATION' !Added by Thiago for debug purposes
 !
         DO J=JMS,JME
         DO I=IMS,IME
@@ -1575,8 +1782,9 @@
 ! grid%rswinc - CLEAR-SKY downward shortwave at the surface (new for AQ)
 !                            ***  NOTE  ***
 !
-        radiation_tim=radiation_tim+timef()-btimx
+        radiation_tim(grid%id)=radiation_tim(grid%id)+timef()-btimx
       ENDIF
+
 !
 !----------------------------------------------------------------------
 !***  APPLY TEMPERATURE TENDENCY DUE TO RADIATION
@@ -1588,14 +1796,16 @@
 !     the time passed into the zenith angle code consistently between
 !     RDTEMP and RADIATION.
 
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' RDA ',MYIS,MYIE,MYJS,MYJE
       CALL RDTEMP(grid%ntsd,GRID%DT,GRID%JULDAY,GRID%JULYR                  &
      &           ,GRID%XTIME,IHRST,grid%glat,grid%glon                           &
      &           ,grid%czen,grid%czmean,grid%t,grid%rswtt,grid%rlwtt,grid%hbm2                       &
      &           ,IDS,IDF,JDS,JDF,KDS,KDE                              &
      &           ,IMS,IME,JMS,JME,KMS,KME                              &
      &           ,ITS,ITE,JTS,JTE,KTS,KTE)
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' RDB ',MYIS,MYIE,MYJS,MYJE
 !
-      rdtemp_tim=rdtemp_tim+timef()-btimx
+      rdtemp_tim(grid%id)=rdtemp_tim(grid%id)+timef()-btimx
 !
 !
 #ifdef HWRF
@@ -1603,14 +1813,19 @@
 !-------------------------------------------------------------------------------------
 !*** GET SSTs FROM DMITRY's COUPLER ON TO THE PARENT AND NESTED GRID
 !-------------------------------------------------------------------------------------
+#ifdef HWRFX
+      write(message,*)' No Ocean Coupling Run'
+      call wrf_message(trim(message))
+#else
 ! Coupling insertion:->
         CALL ATM_GETSST(grid%sst,grid%sm)
 !<-:Coupling insertion
       IF(GRID%ID .EQ. 1 .AND. MOD(grid%ntsd,grid%NPHS)==0)THEN
         btimx=timef()
-        sst_tim=sst_tim+timef()-btimx
+        sst_tim(grid%id)=sst_tim(grid%id)+timef()-btimx
       ENDIF
 
+#endif
 #endif
 !----------------------------------------------------------------------
 !***  TURBULENT PROCESSES 
@@ -1623,12 +1838,15 @@
         IF(OPERATIONAL_PHYSICS                                         &
      &    .AND.MOD(NTSD_rad,GRID%NRADS)/=0                             &
      &    .AND.MOD(NTSD_rad,GRID%NRADL)/=0)THEN
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE UPDATE_MOIST' !Added by Thiago for debug purposes
           CALL UPDATE_MOIST(MOIST,grid%q,grid%cwm,grid%f_ice,grid%f_rain,N_MOIST           &
      &                     ,IDS,IDF,JDS,JDF,KDS,KDE                    &
      &                     ,IMS,IME,JMS,JME,KMS,KME                    &
      &                     ,ITS,ITE,JTS,JTE,KTS,KTE)
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER UPDATE_MOIST' !Added by Thiago for debug purposes
         ENDIF
 !
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE TURBL' !Added by Thiago for debug purposes
         CALL TURBL(grid%ntsd,GRID%DT,GRID%NPHS,RESTRT                       &
      &            ,N_MOIST,GRID%NUM_SOIL_LAYERS,grid%sldpth,grid%dzsoil          &
      &            ,grid%deta1,grid%deta2,grid%aeta1,grid%aeta2,grid%eta1,grid%eta2,grid%pdtop,grid%pt          &
@@ -1658,11 +1876,11 @@
      &            ,grid%rswout,grid%rswtoa,grid%rlwtoa                                &
      &            ,grid%aswin,grid%aswout,grid%aswtoa,grid%alwin,grid%alwout,grid%alwtoa             &
 #if (NMM_CORE==1)
-     &            ,grid%uz0h,grid%vz0h,grid%dudt,grid%dvdt,grid%ugwdsfc,grid%vgwdsfc,grid%sfenth          & 
+     &            ,grid%uz0h,grid%vz0h,grid%dudt,grid%dvdt,grid%ugwdsfc,grid%vgwdsfc,grid%sfenth          &
 #else
-     &            ,grid%uz0h,grid%vz0h,grid%dudt,grid%dvdt                                 & 
+     &            ,grid%uz0h,grid%vz0h,grid%dudt,grid%dvdt                                 &
 #endif
-     &            ,RTHBLTEN,RQVBLTEN                                   & 
+     &            ,RTHBLTEN,RQVBLTEN                                   &
      &            ,GRID%PCPFLG,grid%ddata                                   &
      &            ,grid%hstdv,grid%hcnvx,grid%hasyw,grid%hasys,grid%hasysw,grid%hasynw,grid%hlenw,grid%hlens   & ! GWD
      &            ,grid%hlensw,grid%hlennw,grid%hangl,grid%hanis,grid%hslop,grid%hzmax,grid%crot,grid%srot     & ! GWD
@@ -1676,12 +1894,13 @@
      &            ,IDS,IDF,JDS,JDF,KDS,KDE                             &
      &            ,IMS,IME,JMS,JME,KMS,KME                             &
      &            ,ITS,ITE,JTS,JTE,KTS,KTE)
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER TURBL' !Added by Thiago for debug purposes
 !
 !                     ***  NOTE  ***
 ! grid%rlwin/grid%rswin - downward longwave/shortwave at the surface
 !                     ***  NOTE  ***
 !
-        turbl_tim=turbl_tim+timef()-btimx
+        turbl_tim(grid%id)=turbl_tim(grid%id)+timef()-btimx
 #ifdef HWRF
 
 
@@ -1702,7 +1921,10 @@
 
 !
 !
-
+#ifdef HWRFX
+      write(message,*)' No Ocean Coupling Run'
+      call wrf_message(trim(message))
+#else
 ! Coupling insertion:->
       call ATM_DOFLUXES(grid%twbs,grid%qwbs,grid%rlwin,grid%rswin,grid%radot,grid%rswout, &
       grid%taux,grid%tauy,grid%pint(:,:,1),grid%prec,grid%u10,grid%v10)
@@ -1711,29 +1933,39 @@
 
       IF(GRID%ID .EQ. 1 .AND. MOD(grid%ntsd,grid%NPHS)==0)THEN
         btimx=timef()
-        flux_tim=flux_tim+timef()-btimx
+        flux_tim(grid%id)=flux_tim(grid%id)+timef()-btimx
       ENDIF
 
 #endif
+#endif
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
         btimx=timef()
 !-----------------
+ti=timef()
+CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
 #ifdef DM_PARALLEL
+  IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_TURBL_A.inc' !Added by Thiago for debug purposes
 # include "HALO_NMM_TURBL_A.inc"
+  IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_TURBL_A.inc' !Added by Thiago for debug purposes
 #endif
 !-----------------
 #ifdef DM_PARALLEL
+  IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_TURBL_B.inc' !Added by Thiago for debug purposes
 # include "HALO_NMM_TURBL_B.inc"
+  IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_TURBL_B.inc' !Added by Thiago for debug purposes
 #endif
+CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+tf=timef()
+IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_TURBL ',(tf-ti)*1.e-3
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
+        exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !       this_tim=timef()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max           &
 !    &                    ,mpi_comm_comp,irtn)
-!       exch_tim_max=exch_tim_max+et_max
+!       exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
 !***  INTERPOLATE WINDS FROM H POINTS BACK TO grid%v POINTS.
 !
@@ -1743,26 +1975,35 @@
      &                ,IDS,IDF,JDS,JDF,KDS,KDE                          &
      &                ,IMS,IME,JMS,JME,KMS,KME                          &
      &                ,ITS,ITE,JTS,JTE,KTS,KTE)
-        uv_htov_tim=uv_htov_tim+timef()-btimx
+        uv_htov_tim(grid%id)=uv_htov_tim(grid%id)+timef()-btimx
 !
 !----------------------------------------------------------------------
 !*** STORE ORIGINAL TEMPERATURE ARRAY
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
         btimx=timef()
 !-----------------
+ti=timef()
+CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
 #ifdef DM_PARALLEL
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_J.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_J.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_J.inc' !Added by Thiago for debug purposes
 #endif
 !
 #ifdef DM_PARALLEL
         IF (.NOT.ETAMP_PHYSICS) THEN
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_J_3.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_J_3.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_J_3.inc' !Added by Thiago for debug purposes
         ENDIF
 #endif
+CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+tf=timef()
+IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_J-J_3 ',(tf-ti)*1.e-3
 !
 #ifdef WRF_CHEM
 #ifdef DM_PARALLEL
@@ -1770,11 +2011,11 @@
 #endif
 #endif
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
+        exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !       this_tim=timef()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max           &
 !    &                    ,mpi_comm_comp,irtn)
-!       exch_tim_max=exch_tim_max+et_max
+!       exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
         ICLTEND=-1
         btimx=timef()
@@ -1784,13 +2025,14 @@
      &             ,IMS,IME,JMS,JME,KMS,KME                            &
      &             ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-        cltend_tim=cltend_tim+timef()-btimx
+        cltend_tim(grid%id)=cltend_tim(grid%id)+timef()-btimx
      ENDIF
 !
 !----------------------------------------------------------------------
 !***  CONVECTIVE PRECIPITATION
 !----------------------------------------------------------------------
 !
+
       IF(MOD(grid%ntsd,GRID%NCNVC)==0.AND.                              &
      &   (CONFIG_FLAGS%CU_PHYSICS.eq.KFETASCHEME .or.                     &
      &   CONFIG_FLAGS%CU_PHYSICS.eq.OSASSCHEME .or.                       &
@@ -1799,19 +2041,26 @@
      &   CONFIG_FLAGS%CU_PHYSICS.eq.SASSCHEME))THEN                       ! 
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
         btimx=timef()
 !-----------------
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_C.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_C.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_C.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_C ',(tf-ti)*1.e-3
 #endif
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
+        exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !       this_tim=timef()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max          &
 !    &                    ,mpi_comm_comp,irtn)
-!       exch_tim_max=exch_tim_max+et_max
+!       exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
      ENDIF
 !
       convection: IF(CONFIG_FLAGS%CU_PHYSICS/=0)THEN
@@ -1847,7 +2096,10 @@
 !
 !----------------------------------------------------------------------
        call wrf_message('call cucnvc')
-       call start_timing
+#ifndef THREADED_INTEGRATION
+        call start_timing
+#endif
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE CUCNVC' !Added by Thiago for debug purposes
         CALL CUCNVC(grid%ntsd,GRID%DT,GRID%NCNVC,GRID%NRADS,GRID%NRADL      &
      &             ,GPS,RESTRT,grid%hydro,grid%cldefi,N_MOIST,GRID%ENSDIM        &
      &             ,MOIST                                              &
@@ -1868,8 +2120,8 @@
      &             ,grid%prec,grid%acprec,grid%cuprec,grid%cuppt,grid%cprate                    &
      &             ,grid%sm,grid%hbm2,grid%pblh,grid%lpbl,grid%cnvbot,grid%cnvtop                         &
      &             ,grid%htop,grid%hbot,grid%htopd,grid%hbotd,grid%htops,grid%hbots                  &
-     &             ,RTHBLTEN,RQVBLTEN,RTHRATEN                         & 
-#if (NMM_CORE==1)                  
+     &             ,RTHBLTEN,RQVBLTEN,RTHRATEN                         &
+#if (NMM_CORE==1)
      &             ,grid%twbs,grid%qwbs                                &
      &                 ,grid%DUCUDT, grid%DVCUDT, GRID%MOMMIX, grid%random             &
 #endif
@@ -1880,10 +2132,13 @@
      &             ,IMS,IME,JMS,JME,KMS,KME                            &
      &             ,IPS,IPE,JPS,JPE,KPS,KPE                            &
      &             ,ITS,ITE,JTS,JTE,KTS,KTE)
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER CUCNVC' !Added by Thiago for debug purposes
+#ifndef THREADED_INTEGRATION
         call end_timing('cucnvc')
+#endif
 !----------------------------------------------------------------------
 !
-        cucnvc_tim=cucnvc_tim+timef()-btimx
+        cucnvc_tim(grid%id)=cucnvc_tim(grid%id)+timef()-btimx
 !
 
 
@@ -1904,19 +2159,28 @@
 !emc_2010_bugfix_h50
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
         btimx=timef()
 !-----------------
+ti=timef()
+CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
 #ifdef DM_PARALLEL
+  IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_SAS_A.inc' !Added by Thiago for debug purposes
 # include "HALO_NMM_SAS_A.inc"
+  IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_SAS_A.inc' !Added by Thiago for debug purposes
 #endif
 !-----------------
 #ifdef DM_PARALLEL
+  IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_SAS_B.inc' !Added by Thiago for debug purposes
 # include "HALO_NMM_SAS_B.inc"
+  IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_SAS_B.inc' !Added by Thiago for debug purposes
 #endif
+CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+tf=timef()
+IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_SAS_A-B ',(tf-ti)*1.e-3
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
+        exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 
 !
 !***  INTERPOLATE WINDS FROM H POINTS BACK TO V POINTS AFTER SAS 
@@ -1929,7 +2193,7 @@
      &                ,IDS,IDF,JDS,JDF,KDS,KDE                          &
      &                ,IMS,IME,JMS,JME,KMS,KME                          &
      &                ,ITS,ITE,JTS,JTE,KTS,KTE)
-        uv_htov_tim=uv_htov_tim+timef()-btimx
+        uv_htov_tim(grid%id)=uv_htov_tim(grid%id)+timef()-btimx
 !emc_2010_bugfix_h50
 
      ENDIF ! for SAS only 
@@ -1946,6 +2210,7 @@
       IF(MOD(grid%ntsd,GRID%NPHS)==0)THEN
         btimx=timef()
 !
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE GSMDRIVE' !Added by Thiago for debug purposes
         CALL GSMDRIVE(grid%ntsd,GRID%DT,GRID%NPHS,N_MOIST                   &
      &               ,grid%dx_nmm(ITS,JC),GRID%DY,grid%sm,grid%hbm2,grid%fis               &
      &               ,grid%deta1,grid%deta2,grid%aeta1,grid%aeta2,grid%eta1,grid%eta2                &
@@ -1962,8 +2227,9 @@
      &               ,IDS,IDF,JDS,JDF,KDS,KDE                          &
      &               ,IMS,IME,JMS,JME,KMS,KME                          &
      &               ,ITS,ITE,JTS,JTE,KTS,KTE)
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER GSMDRIVE' !Added by Thiago for debug purposes
 !
-        gsmdrive_tim=gsmdrive_tim+timef()-btimx
+        gsmdrive_tim(grid%id)=gsmdrive_tim(grid%id)+timef()-btimx
 !
 !-----------------------------------------------------------------------
 !---------PRECIPITATION ASSIMILATION------------------------------------
@@ -1971,17 +2237,18 @@
 !
         IF (GRID%PCPFLG) THEN
           btimx=timef()
-!
-          CALL CHKSNOW(grid%ntsd,GRID%DT,GRID%NPHS,grid%sr,PPTDAT                 &
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE CHKSNOW AND ADJPPT' !Added by Thiago for debug purposes
+          CALL CHKSNOW(grid%ntsd,GRID%DT,GRID%NPHS,grid%sr,PPTDAT                 &             !Thiago comment: Precipitation assimilation does not work for multiple domains.
      &      ,IDS,IDE,JDS,JDE,KDS,KDE                                    &
      &      ,IMS,IME,JMS,JME,KMS,KME                                    &
      &      ,ITS,ITE,JTS,JTE,KTS,KTE)
-          CALL ADJPPT(grid%ntsd,GRID%DT,GRID%NPHS,grid%prec,grid%lspa,PPTDAT,grid%ddata     &
+          CALL ADJPPT(grid%ntsd,GRID%DT,GRID%NPHS,grid%prec,grid%lspa,PPTDAT,grid%ddata     &   !Thiago comment: Precipitation assimilation does not work for multiple domains.
      &      ,IDS,IDE,JDS,JDE,KDS,KDE                                    &
      &      ,IMS,IME,JMS,JME,KMS,KME                                    &
      &      ,ITS,ITE,JTS,JTE,KTS,KTE)
+          IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER CHKSNOW AND ADJPPT' !Added by Thiago for debug purposes
 !
-          adjppt_tim=adjppt_tim+timef()-btimx
+          adjppt_tim(grid%id)=adjppt_tim(grid%id)+timef()-btimx
         ENDIF
 !
 !----------------------------------------------------------------------
@@ -1996,7 +2263,7 @@
      &             ,IMS,IME,JMS,JME,KMS,KME                            &
      &             ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-        cltend_tim=cltend_tim+timef()-btimx
+        cltend_tim(grid%id)=cltend_tim(grid%id)+timef()-btimx
       ENDIF
 !
 !----------------------------------------------------------------------
@@ -2011,29 +2278,37 @@
      &           ,IMS,IME,JMS,JME,KMS,KME                              &
      &           ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-      cltend_tim=cltend_tim+timef()-btimx
+      cltend_tim(grid%id)=cltend_tim(grid%id)+timef()-btimx
 !
 !----------------------------------------------------------------------
 !***  LATERAL DIFFUSION
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
       btimx=timef()
 !-----------------
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_K.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_K.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_K.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_K ',(tf-ti)*1.e-3
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
+      exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !     this_tim=timef()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
-!     exch_tim_max=exch_tim_max+et_max
+!     exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
       btimx=timef()
 !
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HDIFF' !Added by Thiago for debug purposes
       CALL HDIFF(grid%ntsd,GRID%DT,grid%fis,grid%dy_nmm,grid%hdac,grid%hdacv         &
      &          ,grid%hbm2,grid%deta1,GRID%SIGMA                       &
 #ifdef HWRF
@@ -2047,6 +2322,7 @@
      &          ,IDS,IDF,JDS,JDF,KDS,KDE                               &
      &          ,IMS,IME,JMS,JME,KMS,KME                               &
      &          ,ITS,ITE,JTS,JTE,KTS,KTE)
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HDIFF' !Added by Thiago for debug purposes
 !
       IF(.NOT.OPERATIONAL_PHYSICS)THEN
         DO K=KTS,KTE
@@ -2059,24 +2335,33 @@
         ENDDO
       ENDIF
 !
-      hdiff_tim=hdiff_tim+timef()-btimx
+      hdiff_tim(grid%id)=hdiff_tim(grid%id)+timef()-btimx
 !
 !----------------------------------------------------------------------
 !***  UPDATING BOUNDARY VALUES AT HEIGHT POINTS
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
       btimx=timef()
 !-----------------
+ti=timef()
+CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
 #ifdef DM_PARALLEL
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_L.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_L.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_L.inc' !Added by Thiago for debug purposes
 #endif
 !
 #ifdef DM_PARALLEL
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_L_3.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_L_3.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_L_3.inc' !Added by Thiago for debug purposes
 #endif
+CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+tf=timef()
+IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_L-L_3 ',(tf-ti)*1.e-3
 !
 #ifdef WRF_CHEM
 #ifdef DM_PARALLEL
@@ -2084,11 +2369,11 @@
 #endif
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
+      exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !     this_tim=timef()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
-!     exch_tim_max=exch_tim_max+et_max
+!     exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
       btimx=timef()
 !
@@ -2140,7 +2425,7 @@
       endif
 #endif
 !
-      bocoh_tim=bocoh_tim+timef()-btimx
+      bocoh_tim(grid%id)=bocoh_tim(grid%id)+timef()-btimx
 !     if(mod(grid%ntsd,n_print_time)==0)then
 !       call twr(grid%t,0,'grid%t',grid%ntsd,mype,npes,mpi_comm_comp &
 !    &          ,ids,ide,jds,jde,kds,kde                               &
@@ -2159,19 +2444,28 @@
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
       btimx=timef()
 !-----------------
+ti=timef()
+CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
 #ifdef DM_PARALLEL
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_A.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_A.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_A.inc' !Added by Thiago for debug purposes
 #endif
 !
 #ifdef DM_PARALLEL
-      IF (ETAMP_PHYSICS) THEN
+     IF (ETAMP_PHYSICS) THEN
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_A_3.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_A_3.inc"
-      ENDIF
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_A_3.inc' !Added by Thiago for debug purposes
+     ENDIF
 #endif
+CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+tf=timef()
+IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_A-A_3 ',(tf-ti)*1.e-3
 !
 #ifdef WRF_CHEM
 #ifdef DM_PARALLEL
@@ -2179,16 +2473,17 @@
 #endif
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
+      exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !     this_tim=timef()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
-!     exch_tim_max=exch_tim_max+et_max
+!     exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
       btimx=timef()
 !
       CALL PFDHT(grid%ntsd,LAST_TIME,grid%pt,grid%deta1,grid%deta2,grid%pdtop,grid%res,grid%fis           &
-     &          ,grid%hydro,GRID%SIGMA,FIRST,grid%dx_nmm,grid%dy_nmm                  &
+     !&          ,grid%hydro,GRID%SIGMA,FIRST,grid%dx_nmm,grid%dy_nmm                  &        !Commented out by Thiago to replace MODULE_CTLBLK:FIRST with local non-SAVE variable IS_FIRST_CALL.
+     &          ,grid%hydro,GRID%SIGMA,IS_FIRST_CALL,grid%dx_nmm,grid%dy_nmm                  & !Thiago replaced MODULE_CTLBLK:FIRST with local non-SAVE variable IS_FIRST_CALL.
      &          ,grid%hbm2,grid%vbm2,grid%vbm3                                        &
      &          ,grid%fdiv,grid%fcp,grid%wpdar,grid%dfl,grid%cpgfu,grid%cpgfv                        &
      &          ,grid%pd,grid%pdsl,grid%t,grid%q,grid%u,grid%v,grid%cwm,grid%omgalf,grid%pint,grid%dwdt                  &
@@ -2199,26 +2494,33 @@
      &          ,ITS,ITE,JTS,JTE,KTS,KTE)
 
 !
-      pfdht_tim=pfdht_tim+timef()-btimx
+      pfdht_tim(grid%id)=pfdht_tim(grid%id)+timef()-btimx
 !
 !----------------------------------------------------------------------
 !***  DIVERGENCE DAMPING
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
       btimx=timef()
 !-----------------
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_B.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_B.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_B.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_B ',(tf-ti)*1.e-3
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
+      exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !     this_tim=timef()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max            &
 !    &                  ,mpi_comm_comp,irtn)
-!     exch_tim_max=exch_tim_max+et_max
+!     exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
       btimx=timef()
 !
@@ -2230,57 +2532,78 @@
      &          ,IMS,IME,JMS,JME,KMS,KME                                &
      &          ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-      ddamp_tim=ddamp_tim+timef()-btimx
+      ddamp_tim(grid%id)=ddamp_tim(grid%id)+timef()-btimx
 !
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
 !
-      IF(FIRST.AND.grid%ntsd==0)THEN
-        FIRST=.FALSE.
+      !IF(FIRST.AND.grid%ntsd==0)THEN           !Commented out by Thiago to replace MODULE_CTLBLK:FIRST with local non-SAVE variable IS_FIRST_CALL.
+      !  FIRST=.FALSE.                          !Commented out by Thiago to replace MODULE_CTLBLK:FIRST with local non-SAVE variable IS_FIRST_CALL.
+      IF(IS_FIRST_CALL .AND. grid%ntsd==0)THEN  !Thiago replaced MODULE_CTLBLK:FIRST with local non-SAVE variable IS_FIRST_CALL.
+        IS_FIRST_CALL = .FALSE.                 !Thiago replaced MODULE_CTLBLK:FIRST with local non-SAVE variable IS_FIRST_CALL.
+
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
         btimx=timef()
 !-----------------
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_A.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_A.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_A.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_A ',(tf-ti)*1.e-3
 #endif
+
 #ifdef WRF_CHEM
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_A_2.inc"
 #endif
 #endif
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
+        exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !       this_tim=timef()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max          &
 !    &                    ,mpi_comm_comp,irtn)
-!       exch_tim_max=exch_tim_max+et_max
+!       exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
-        GO TO 2000
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' GOTO 2000.' !Added by Thiago for debug purposes
+        GOTO 2000
       ENDIF
+
 !
 !----------------------------------------------------------------------
 !***  UPDATING BOUNDARY VALUES AT VELOCITY POINTS
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim(grid%id))
 #endif
       btimx=timef()
 !-----------------
 #ifdef DM_PARALLEL
+     ti=timef()
+     CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE HALO_NMM_C.inc' !Added by Thiago for debug purposes
 #    include "HALO_NMM_C.inc"
+     IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER HALO_NMM_C.inc' !Added by Thiago for debug purposes
+     CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize halo updates by multiple domains in parallel
+     tf=timef()
+     IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HALO_NMM_C ',(tf-ti)*1.e-3
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
+      exch_tim(grid%id)=exch_tim(grid%id)+timef()-btimx
 !     this_tim=timef()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max            &
 !    &                  ,mpi_comm_comp,irtn)
-!     exch_tim_max=exch_tim_max+et_max
+!     exch_tim_max(grid%id)=exch_tim_max(grid%id)+et_max
 !
       btimx=timef()
 !
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' START BOCOV.'
       CALL BOCOV(GRID%ID,grid%ntsd,GRID%DT,LB,grid%U_BXS,grid%U_BXE,grid%U_BYS,grid%U_BYE,grid%V_BXS &
      &          ,grid%V_BXE,grid%V_BYS,grid%V_BYE,grid%U_BTXS,grid%U_BTXE,grid%U_BTYS,grid%U_BTYE,grid%V_BTXS  &
      &          ,grid%V_BTXE,grid%V_BTYS,grid%V_BTYE,grid%u,grid%v                              &
@@ -2289,9 +2612,10 @@
      &          ,IDS,IDF,JDS,JDF,KDS,KDE                               &
      &          ,IMS,IME,JMS,JME,KMS,KME                               &
      &          ,ITS,ITE,JTS,JTE,KTS,KTE )
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' END BOCOV.'
  
 !
-      bocov_tim=bocov_tim+timef()-btimx
+      bocov_tim(grid%id)=bocov_tim(grid%id)+timef()-btimx
 !
 !----------------------------------------------------------------------
 !***  COPY THE NMM VARIABLE grid%q2 TO THE WRF VARIABLE grid%tke_pbl
@@ -2313,84 +2637,92 @@
 !
 !----------------------------------------------------------------------
 !
-      solve_tim=solve_tim+timef()-btim
+      solve_tim(grid%id)=solve_tim(grid%id)+timef()-btim
 !
 !----------------------------------------------------------------------
 !***  PRINT TIMING VARIABLES WHEN DESIRED.
 !----------------------------------------------------------------------
 !
-      sum_tim=pdte_tim+adve_tim+vtoa_tim+vadz_tim+hadz_tim+eps_tim     &
-     &       +vad2_tim+had2_tim+radiation_tim+rdtemp_tim+turbl_tim     &
-     &       +cltend_tim+cucnvc_tim+gsmdrive_tim+hdiff_tim             &
-     &       +bocoh_tim+pfdht_tim+ddamp_tim+bocov_tim+uv_htov_tim      &
-     &       +exch_tim+adjppt_tim
+      sum_tim(grid%id)=pdte_tim(grid%id)+adve_tim(grid%id)+vtoa_tim(grid%id)+vadz_tim(grid%id)+hadz_tim(grid%id)+eps_tim(grid%id)     &
+     &       +vad2_tim(grid%id)+had2_tim(grid%id)+radiation_tim(grid%id)+rdtemp_tim(grid%id)+turbl_tim(grid%id)     &
+     &       +cltend_tim(grid%id)+cucnvc_tim(grid%id)+gsmdrive_tim(grid%id)+hdiff_tim(grid%id)             &
+     &       +bocoh_tim(grid%id)+pfdht_tim(grid%id)+ddamp_tim(grid%id)+bocov_tim(grid%id)+uv_htov_tim(grid%id)      &
+     &       +exch_tim(grid%id)+adjppt_tim(grid%id)
 #if defined(NMM_FIND_LOAD_IMBALANCE)
-      sum_tim=sum_tim + loadimbal_tim + previmbal_tim
+      sum_tim(grid%id)=sum_tim(grid%id) + loadimbal_tim(grid%id) + previmbal_tim(grid%id)
 #endif
 !
-      if(mod(grid%ntsd,n_print_time)==0)then
-        write(message,*)' grid%ntsd=',grid%ntsd,' solve_tim=',solve_tim*1.e-3          &
-     &           ,' sum_tim=',sum_tim*1.e-3
+      !if(mod(grid%ntsd,n_print_time)==0)then
+      if(.TRUE.)then
+        CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize the printing of timing statistics
+        write(message,'("START TIMING STATISTICS FOR DOMAIN ",I2," NSTD ",I5,":")')grid%id,grid%ntsd
         call wrf_message(trim(message))
-        write(message,*)' pdte_tim=',pdte_tim*1.e-3,' pct=',pdte_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," solve_tim=",F10.6," sum_tim=",F10.6)')grid%id,grid%ntsd,solve_tim(grid%id)*1.e-3,sum_tim(grid%id)*1.e-3
         call wrf_message(trim(message))
-        write(message,*)' adve_tim=',adve_tim*1.e-3,' pct=',adve_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," pdte_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,pdte_tim(grid%id)*1.e-3,pdte_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' vtoa_tim=',vtoa_tim*1.e-3,' pct=',vtoa_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," adve_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,adve_tim(grid%id)*1.e-3,adve_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' vadz_tim=',vadz_tim*1.e-3,' pct=',vadz_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," vtoa_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,vtoa_tim(grid%id)*1.e-3,vtoa_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' hadz_tim=',hadz_tim*1.e-3,' pct=',hadz_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," vadz_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,vadz_tim(grid%id)*1.e-3,vadz_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' eps_tim=',eps_tim*1.e-3,' pct=',eps_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," hadz_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,hadz_tim(grid%id)*1.e-3,hadz_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' vad2_tim=',vad2_tim*1.e-3,' pct=',vad2_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," eps_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,eps_tim(grid%id)*1.e-3,eps_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' had2_tim=',had2_tim*1.e-3,' pct=',had2_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," vad2_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,vad2_tim(grid%id)*1.e-3,vad2_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' radiation_tim=',radiation_tim*1.e-3,' pct=',radiation_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," had2_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,had2_tim(grid%id)*1.e-3,had2_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' rdtemp_tim=',rdtemp_tim*1.e-3,' pct=',rdtemp_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," radiation_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,radiation_tim(grid%id)*1.e-3,radiation_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' turbl_tim=',turbl_tim*1.e-3,' pct=',turbl_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," rdtemp_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,rdtemp_tim(grid%id)*1.e-3,rdtemp_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' cltend_tim=',cltend_tim*1.e-3,' pct=',cltend_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," turbl_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,turbl_tim(grid%id)*1.e-3,turbl_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' cucnvc_tim=',cucnvc_tim*1.e-3,' pct=',cucnvc_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," cltend_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,cltend_tim(grid%id)*1.e-3,cltend_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' gsmdrive_tim=',gsmdrive_tim*1.e-3,' pct=',gsmdrive_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," cucnvc_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,cucnvc_tim(grid%id)*1.e-3,cucnvc_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' adjppt_tim=',adjppt_tim*1.e-3,' pct=',adjppt_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," gsmdrive_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,gsmdrive_tim(grid%id)*1.e-3,gsmdrive_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' hdiff_tim=',hdiff_tim*1.e-3,' pct=',hdiff_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," adjppt_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,adjppt_tim(grid%id)*1.e-3,adjppt_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' bocoh_tim=',bocoh_tim*1.e-3,' pct=',bocoh_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," hdiff_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,hdiff_tim(grid%id)*1.e-3,hdiff_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' pfdht_tim=',pfdht_tim*1.e-3,' pct=',pfdht_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," bocoh_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,bocoh_tim(grid%id)*1.e-3,bocoh_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' ddamp_tim=',ddamp_tim*1.e-3,' pct=',ddamp_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," pfdht_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,pfdht_tim(grid%id)*1.e-3,pfdht_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' bocov_tim=',bocov_tim*1.e-3,' pct=',bocov_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," ddamp_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,ddamp_tim(grid%id)*1.e-3,ddamp_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' uv_h_to_v_tim=',uv_htov_tim*1.e-3,' pct=',uv_htov_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," bocov_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,bocov_tim(grid%id)*1.e-3,bocov_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' exch_tim=',exch_tim*1.e-3,' pct=',exch_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," uv_htov_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,uv_htov_tim(grid%id)*1.e-3,uv_htov_tim(grid%id)/sum_tim(grid%id)*100.
+        call wrf_message(trim(message))
+        write(message,'("domain=",I2," ntsd=",I5," exch_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,exch_tim(grid%id)*1.e-3,exch_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
 #ifdef NMM_FIND_LOAD_IMBALANCE
-        write(message,*)' loadimbal_tim=',loadimbal_tim*1.e-3,' pct=',loadimbal_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," loadimbal_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,loadimbal_tim(grid%id)*1.e-3,loadimbal_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
-        write(message,*)' previmbal_tim=',previmbal_tim*1.e-3,' pct=',previmbal_tim/sum_tim*100.
+        write(message,'("domain=",I2," ntsd=",I5," previmbal_tim=",F10.6," pct=",F9.6)')grid%id,grid%ntsd,previmbal_tim(grid%id)*1.e-3,previmbal_tim(grid%id)/sum_tim(grid%id)*100.
         call wrf_message(trim(message))
 #endif
+        write(message,'("END TIMING STATISTICS FOR DOMAIN ",I2," NSTD ",I5,":")')grid%id,grid%ntsd
+        call wrf_message(trim(message))
 
-!        call time_stats(exch_tim,'exchange',grid%ntsd,mype,npes,mpi_comm_comp)
-!        write(message,*)' exch_tim_max=',exch_tim_max*1.e-3
+!        call time_stats(exch_tim(grid%id),'exchange',grid%ntsd,mype,npes,mpi_comm_comp)
+!        write(message,*)' exch_tim_max=',exch_tim_max(grid%id)*1.e-3
 !        call wrf_message(trim(message))
 !
-        call field_stats(grid%t,mype,mpi_comm_comp                          &
+        if(mod(grid%ntsd,n_print_time)==0)then
+        call field_stats(grid%t,mype,mpi_comm_comp                     &
      &                  ,ids,ide,jds,jde,kds,kde                       &
      &                  ,ims,ime,jms,jme,kms,kme                       &
      &                  ,its,ite,jts,jte,kts,kte)
+        endif
+        CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)    !Added by Thiago to synchronize the printing of timing statistics
       endif
 !
 !     if(last_time)then
@@ -2404,27 +2736,39 @@
 !
 ! FOR VORTEX FOLLOWING MOVING NEST
 !
-
-
-
 !-----------------------------------------------------------------------------
 !***  CRITERIA SET FOR GRID MOTION. This is gopal's doing
 !-----------------------------------------------------------------------------
 !
 #ifdef MOVE_NESTS
    IF ( grid%num_moves.EQ.-99 ) THEN
+#ifndef THREADED_INTEGRATION
       call start_timing()
+#endif
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' START STATS_FOR_MOVE'
+      ti=timef()
+      CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize nest motion
       call stats_for_move(grid,config_flags &
                          ,IDS,IDE,JDS,JDE,KDS,KDE &
                          ,IMS,IME,JMS,JME,KMS,KME &
                          ,IPS,IPE,JPS,JPE,KPS,KPE &
                          ,ITS,ITE,JTS,JTE,KTS,KTE)
+      CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize nest motion
+      tf=timef()
+      WRITE(MESSAGE,156)grid%id,grid%ntsd,(tf-ti)*1.e-3
+      CALL WRF_MESSAGE(TRIM(MESSAGE))
+  156 FORMAT('DOMAIN ',I2,' TIMESTEP ',I5,' STATS_FOR_MOVE ',F10.6)
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' END STATS_FOR_MOVE'
 3303  format('stats_for_move on domain ',I0)
       write(message,3303) grid%id
+#ifndef THREADED_INTEGRATION
       call end_timing(message)
+#endif
    CALL wrf_debug ( 100 , 'nmm stats_for_move: after advection' )
    ENDIF
 #endif
+
+
 #ifdef HWRF
    hwrfx_mlsp: if(grid%vortex_tracker /= 1) then
 
@@ -2433,14 +2777,13 @@
 
      IF(grid%id .EQ. 1 .AND. MOD(grid%NTSD,n_print_time)==0)THEN
       call wrf_debug(1,'COMPUTING MSLP OVER THE PARENT DOMAIN')
-
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' START MSLP_DIAG'
       CALL MSLP_DIAG (grid%MSLP,grid%PINT,grid%T,grid%Q                &
                      ,grid%FIS,grid%PD,grid%DETA1,grid%DETA2,grid%PDTOP     &
                      ,IDS,IDF,JDS,JDF,KDS,KDE      &
                      ,IMS,IME,JMS,JME,KMS,KME      &
                      ,ITS,ITE,JTS,JTE,KTS,KTE      )
-
-
+      IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' END MSLP_DIAG'
      ENDIF
    endif hwrfx_mlsp
 #endif
@@ -2454,6 +2797,10 @@
 !
 !
 !
+#ifdef HWRFX
+      write(message,*)' No Ocean Coupling Run'
+      call wrf_message(trim(message))
+#else
 ! Coupling insertion:->
       call ATM_SENDFLUXES
 !<-:Coupling insertion
@@ -2462,6 +2809,7 @@
 !
 !  IF(grid%id==2)WRITE(0,*)'AFTER ATM_SENDFLUX grid%qwbs grid%twbs AT 10 10 ',grid%ntsd,grid%qwbs(10,10),grid%twbs(10,10)
 !
+#endif
 #endif
 
 !--------------------------------------------------------------------------------------------------------------
@@ -2473,17 +2821,31 @@
 !
 #ifdef HWRF
      IF(grid%hifreq_lun /= 0) THEN
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' START HIFREQ_WRITE.'
+        ti=timef()
+        !CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize
         CALL HIFREQ_WRITE(grid%hifreq_lun,GRID%NTSD,GRID%DT,GRID%HLAT,GRID%HLON    &
                       ,GRID%U10,GRID%V10,grid%pint,grid%t,grid%q                   &
                       ,grid%fis,grid%pd,grid%pdtop,grid%deta1,grid%deta2           &
                       ,IDS,IDF,JDS,JDF,KDS,KDE                                     &
                       ,IMS,IME,JMS,JME,KMS,KME                                     &
-                      ,ITS,ITE,JTS,JTE,KTS,KTE   )
+                      ,ITS,ITE,JTS,JTE,KTS,KTE,grid%id   )                              !Argument GRID%ID added by Thiago allows domains to synchronize around MPI calls.
+        !CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)  !Added by Thiago to synchronize
+        tf=timef()
+        !IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TIMESTEP ',grid%ntsd,' HIFREQ TIME ',(tf-ti)*1.e-3
+        WRITE(MESSAGE,146)grid%id,grid%ntsd,(tf-ti)*1.e-3
+        CALL WRF_MESSAGE(TRIM(MESSAGE))
+    146 FORMAT('DOMAIN ',I2,' TIMESTEP ',I5,' HIFREQ TIME ',F10.6)
+        IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' END HIFREQ_WRITE.'
      ENDIF
 #endif
 !
 !-------------------  END OF HIGH FREQUENCY OUTPUT MODULE  ----------------------------
- 
+
+      endTime=timef()
+      WRITE(MESSAGE,136)grid%id,grid%ntsd,endTime*1.e-3,(endTime-startTime)*1.e-3
+      CALL WRF_MESSAGE(TRIM(MESSAGE))
+  136 FORMAT(' SOLVE_NMM: END DOMAIN ',I2,' TIMESTEP ',I5,' ON CLOCKTIME ',F20.6,'(interval=',F10.6,')')
 
       Return
 !----------------------------------------------------------------------
@@ -3237,6 +3599,8 @@
 !----------------------------------------------------------------------
       END SUBROUTINE FIELD_STATS
 !----------------------------------------------------------------------
+
+
       FUNCTION TIMEF()
       implicit none
       REAL*8 TIMEF
@@ -3249,6 +3613,8 @@
       timef=timef*1000
 #endif
       END FUNCTION TIMEF
+
+
 #if defined(NMM_FIND_LOAD_IMBALANCE)
       SUBROUTINE BLOCKF(block_tim)
 #if defined(DM_PARALLEL)

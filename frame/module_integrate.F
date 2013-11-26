@@ -151,7 +151,7 @@ RECURSIVE SUBROUTINE integrate ( grid )
    INTEGER                                :: fid , rid
    LOGICAL                                :: lbc_opened
    REAL                                   :: time, btime, bfrq
-   CHARACTER*256                          :: message, message2, message3
+   CHARACTER*256                          :: message, message2,message3
    TYPE (grid_config_rec_type)            :: config_flags
    LOGICAL , EXTERNAL                     :: wrf_dm_on_monitor
    INTEGER                                :: idum1 , idum2 , ierr , open_status
@@ -537,17 +537,17 @@ RECURSIVE SUBROUTINE integrate ( grid )
 END SUBROUTINE integrate
 
 !Added by Thiago to time events in this module
-REAL*8 FUNCTION MYTIMER()
+REAL*8 FUNCTION HTIMER()
     implicit none
 #if defined(OLD_TIMERS)
     INTEGER :: IC,IR
     CALL SYSTEM_CLOCK(COUNT=IC,COUNT_RATE=IR)
-    MYTIMER=REAL(IC)/REAL(IR)*1000.0
+    HTIMER=REAL(IC)/REAL(IR)*1000.0
 #else
-    call hires_timer(MYTIMER)
-    MYTIMER=MYTIMER*1000
+    call hires_timer(HTIMER)
+    HTIMER=HTIMER*1000
 #endif
-END FUNCTION MYTIMER
+END FUNCTION HTIMER
 
 END MODULE module_integrate
 

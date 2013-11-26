@@ -2259,7 +2259,7 @@
       INTEGER :: DTEMP_CHECK=2.0
       REAL :: TCHANGE
 !  random number restart
-      INTEGER, SAVE  :: nfirst
+      INTEGER, SAVE  :: nfirst  !Thiago comment: this SAVE variable is never used.
       data nfirst /0/
 #if (NMM_CORE==1)
       INTEGER                    :: IDT                

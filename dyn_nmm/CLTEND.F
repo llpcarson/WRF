@@ -36,7 +36,7 @@
 !   MACHINE : IBM SP
 !$$$  
 !----------------------------------------------------------------------
-      USE module_MPP
+      USE module_MPP    !Thiago comments: None of the SAVE variables in this module are used here.
 !
       IMPLICIT NONE
 !

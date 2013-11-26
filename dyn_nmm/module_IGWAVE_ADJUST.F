@@ -13,7 +13,7 @@
 !-----------------------------------------------------------------------
       USE MODULE_MODEL_CONSTANTS, only: R_d, p608
 !     USE MODULE_EXCHANGE
-      USE MODULE_MPP,ONLY: MYPE
+      USE MODULE_MPP,ONLY: MYPE !Thiago comment: Variable MODULE_MPP::MYPE is not used anywhere in this module.
       USE MODULE_WRF_ERROR     
 !     USE MODULE_TIMERS  ! this one creates a name conflict at compile time
 !-----------------------------------------------------------------------
@@ -630,6 +630,7 @@
                                               ,wrf_dm_sum_real          &
                                               ,wrf_dm_sum_integer          
       USE MODULE_COMM_DM, only: HALO_NMM_E_sub
+      USE MODULE_SYNC_DOMAINS                                               !Added by Thiago to allow synchronized execution of various parts of the model by multiple domains in parallel
 #endif
 !-----------------------------------------------------------------------
       IMPLICIT NONE
@@ -722,7 +723,9 @@
       ENDDO
 
 #ifdef DM_PARALLEL
+#ifndef THREADED_INTEGRATION
       GLB_NPTS=wrf_dm_sum_integer(LOC_NPTS)
+#endif
 #else
       GLB_NPTS=LOC_NPTS
 #endif
@@ -750,7 +753,7 @@
 !$omp parallel do                                                       &
 !$omp& private(i,j)
 
-      TASK_CHANGE=0.
+      TASK_CHANGE=0.    !Thiago comment: This fails under OpenMP because the !$omp directive expects subsequent line to be a DO loop, not a variable assignment.
 
       DO J=MYJS_P2,MYJE_P2
       DO I=MYIS_P2,MYIE_P2
@@ -762,16 +765,20 @@
       ENDDO
 
 #ifdef DM_PARALLEL
+#ifndef THREADED_INTEGRATION
       GLOBAL_CHANGE_WRF=wrf_dm_sum_real(TASK_CHANGE)/GLB_NPTS
+#endif
 #else
       GLOBAL_CHANGE_WRF=TASK_CHANGE/GLB_NPTS
 #endif
 
 #ifdef DM_PARALLEL
+#ifndef THREADED_INTEGRATION
       if ( MYPE == 0 ) then
         write(wrf_err_message,*) 'avg global change (hPa/3h): ', GLOBAL_CHANGE_WRF
         call wrf_debug(1,wrf_err_message)
       endif
+#endif
 #else
         write(wrf_err_message,*) 'avg global change (hPa/3h): ', GLOBAL_CHANGE_WRF
         call wrf_debug(1,wrf_err_message)
@@ -870,7 +877,9 @@
 !
 #ifdef DM_PARALLEL
 !          IPS=ITS;IPE=ITE;JPS=JTS;JPE=JTE;KPS=KTS;KPE=KTE
+CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize halo updates by multiple domains in parallel
 # include <HALO_NMM_E.inc>
+CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)    !Added by Thiago to synchronize halo updates by multiple domains in parallel
 #endif
 !-----------------------------------------------------------------------
 !
@@ -1142,7 +1151,7 @@
 !
       FCXM=1.
 !
-!$omp parallel do
+!$omp parallel do                                                       &
 !$omp& private(i,j)
       DO J=MYJS_P2,MYJE_P2
       DO I=MYIS_P2,MYIE_P2

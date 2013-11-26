@@ -127,7 +127,7 @@
 !-----------------------------------------------------------------------
 !
       INTEGER :: I,J,K,NTSD_BUCKET,NTSPH
-      LOGICAL ::  FIRST_PASS=.TRUE.
+      LOGICAL,SAVE ::  FIRST_PASS=.TRUE.     !Modified by Thiago: Added SAVE attribute to variable FIRST_PASS. This prevents race conditions by allowing only D01 at t=0h to (1) initialize related SAVE variables and (2) invoke "MODULE_MP_ETANEW::GPVS" once instead of at every time-step.
       LOGICAL ::  WRF_DM_ON_MONITOR
       EXTERNAL WRF_DM_ON_MONITOR
 !
