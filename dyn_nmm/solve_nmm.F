@@ -306,10 +306,10 @@
 !
 !-----------------------------------------------------------------------
 !
-        startTime=timef()                                                               !Added by Thiago to time the execution of SOLVE_NMM
-        WRITE(MESSAGE,126)grid%id,grid%ntsd,grid%ntsd*GRID%DT/3600.0,startTime*1.e-3    !Thiago added domain ID and timestamp to the message
+        startTime=timef()                                               !Added by Thiago to time the execution of SOLVE_NMM
+        WRITE(MESSAGE,126)grid%id,grid%ntsd,grid%ntsd*GRID%DT/3600.0    !Thiago added domain ID to the message
         CALL WRF_MESSAGE(TRIM(MESSAGE))
-  126   FORMAT(' SOLVE_NMM: DOMAIN ',I2,' TIMESTEP ',I5,' HOUR ',F7.3,' ON CLOCKTIME ',F20.6)     !Thiago added domain ID and timestamp to the message
+  126   FORMAT(' SOLVE_NMM: DOMAIN ',I2,' TIMESTEP ',I5,' HOUR ',F7.3)  !Thiago added domain ID to the message
 
 !
 !-----------------------------------------------------------------------
@@ -2843,9 +2843,9 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
 !-------------------  END OF HIGH FREQUENCY OUTPUT MODULE  ----------------------------
 
       endTime=timef()
-      WRITE(MESSAGE,136)grid%id,grid%ntsd,endTime*1.e-3,(endTime-startTime)*1.e-3
+      WRITE(MESSAGE,136)grid%id,grid%ntsd,(endTime-startTime)*1.e-3
       CALL WRF_MESSAGE(TRIM(MESSAGE))
-  136 FORMAT(' SOLVE_NMM: END DOMAIN ',I2,' TIMESTEP ',I5,' ON CLOCKTIME ',F20.6,'(interval=',F10.6,')')
+  136 FORMAT(' SOLVE_NMM: END DOMAIN ',I2,' TIMESTEP ',I5,' IN ',F10.6,' MSECS')
 
       Return
 !----------------------------------------------------------------------
