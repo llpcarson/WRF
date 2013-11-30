@@ -723,7 +723,7 @@
       ENDDO
 
 #ifdef DM_PARALLEL
-#ifndef THREADED_INTEGRATION
+#ifndef HRD_THREADED_INTEGRATION
       GLB_NPTS=wrf_dm_sum_integer(LOC_NPTS)
 #endif
 #else
@@ -765,7 +765,7 @@
       ENDDO
 
 #ifdef DM_PARALLEL
-#ifndef THREADED_INTEGRATION
+#ifndef HRD_THREADED_INTEGRATION
       GLOBAL_CHANGE_WRF=wrf_dm_sum_real(TASK_CHANGE)/GLB_NPTS
 #endif
 #else
@@ -773,7 +773,7 @@
 #endif
 
 #ifdef DM_PARALLEL
-#ifndef THREADED_INTEGRATION
+#ifndef HRD_THREADED_INTEGRATION
       if ( MYPE == 0 ) then
         write(wrf_err_message,*) 'avg global change (hPa/3h): ', GLOBAL_CHANGE_WRF
         call wrf_debug(1,wrf_err_message)

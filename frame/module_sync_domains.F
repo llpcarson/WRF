@@ -54,6 +54,7 @@ MODULE MODULE_SYNC_DOMAINS
         CALL nl_get_max_dom(1,totalDomainsInSimulation)
 
         !Initialize all static global SAVE variables
+        totalStormsInSimulation = 0         !Assume this is a run without nests
         currDomainWithPrivilege = 1         !Domain D01 has the initial task privilege
         currNestingLevelWithPrivilege = 0   !Domain D01 is always assigned to nesting level 0        
         domainNestingLevel = 0              !This simulation must have at least 1 outer-most domain.
@@ -100,7 +101,9 @@ MODULE MODULE_SYNC_DOMAINS
         maxSimulationNestingLevel = MAXVAL(domainNestingLevel)
 
         !Determine the total number of storms in the simulation that are being tracked by high-resolution nests
-        totalStormsInSimulation = numDomainsInEachNestingLevel(maxSimulationNestingLevel)
+        IF(maxSimulationNestingLevel > 0) THEN
+            totalStormsInSimulation = numDomainsInEachNestingLevel(maxSimulationNestingLevel)
+        ENDIF
 
         !Print information about every domain found
         WRITE(*,*) '@@@@@ Total domains: ',totalDomainsInSimulation
@@ -123,6 +126,7 @@ MODULE MODULE_SYNC_DOMAINS
         !Duplicate the compute node communicators
         WRITE(*,*) '@@@@@ MPI ORIG: ',local_communicator,'/',local_communicator_x,'/',local_communicator_y
         DO nestid=1,totalDomainsInSimulation
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
             !Duplicate the compute nodes communicator
             CALL mpi_comm_dup(local_communicator,domainCommunicatorList(nestid),ierr)
             IF(ierr .NE. 0) CALL WRF_ERROR_FATAL("Failed to duplicate compute node MPI communicator for each domain in RECURSIVE SUBROUTINE INTEGRATE.")
@@ -135,11 +139,6 @@ MODULE MODULE_SYNC_DOMAINS
             CALL mpi_comm_dup(local_communicator_y,domainYCommunicatorList(nestid),ierr)
             IF(ierr .NE. 0) CALL WRF_ERROR_FATAL("Failed to duplicate compute node MPI communicator for each domain in RECURSIVE SUBROUTINE INTEGRATE.")
 
-            !Added by Thiago to test multiple threads using serialized access to a single communicator
-            !domainCommunicatorList(nestid)=local_communicator
-            !domainXCommunicatorList(nestid)=local_communicator_x
-            !domainYCommunicatorList(nestid)=local_communicator_y
-
             WRITE(*,*) '@@@@@ MPIDUPP ',nestid,': ',domainCommunicatorList(nestid),'/',domainXCommunicatorList(nestid),'/',domainYCommunicatorList(nestid)
             CALL MPI_BARRIER(domainCommunicatorList(nestid),ierr)
             IF(ierr .NE. 0) CALL WRF_ERROR_FATAL("Failed to duplicate compute node MPI communicator for each domain in RECURSIVE SUBROUTINE INTEGRATE.")
@@ -147,13 +146,21 @@ MODULE MODULE_SYNC_DOMAINS
             IF(ierr .NE. 0) CALL WRF_ERROR_FATAL("Failed to duplicate compute node MPI communicator for each domain in RECURSIVE SUBROUTINE INTEGRATE.")
             CALL MPI_BARRIER(domainYCommunicatorList(nestid),ierr)
             IF(ierr .NE. 0) CALL WRF_ERROR_FATAL("Failed to duplicate compute node MPI communicator for each domain in RECURSIVE SUBROUTINE INTEGRATE.")
+#else
+            !Use the existing communicators for all domains instead of duplicate ones
+            domainCommunicatorList(nestid)=local_communicator
+            domainXCommunicatorList(nestid)=local_communicator_x
+            domainYCommunicatorList(nestid)=local_communicator_y
+#endif
         ENDDO
 
-        !Initialize the "C" interface needed to use Pthread-based synchronization tools.
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
+        !Initialize the "C" interface needed to use Pthread-based synchronization functions.
         CALL init_pthread_sync_interface(totalDomainsInSimulation,totalStormsInSimulation,ierr)
         IF(ierr .NE. 0) THEN
             CALL WRF_ERROR_FATAL('Could not initialize the P-thread interface driver.')
         ENDIF
+#endif
 
         WRITE(*,*) '@@@@@ END MODULE_SYNC_DOMAINS INITIALIZATION.'
     END SUBROUTINE
@@ -332,23 +339,31 @@ MODULE MODULE_SYNC_DOMAINS
         INTEGER                     :: theActualSleepTime           !Will hold the actual sleep time for each iteration of the wait loop
         INTEGER                     :: ierr                         !Used to check errors from using a p-thread MUTEX
 
-        !Determine the sleep time for the wait loop
-        theActualSleepTime = 500 !Default is check iterations every 10ms
-        IF(PRESENT(optionalSleepTimeMillisecs)) THEN
-            IF(optionalSleepTimeMillisecs>0) theActualSleepTime = optionalSleepTimeMillisecs
-        ENDIF
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
+        !Domain D01 or a single storm do not need to wait at the barrier
+        IF(theDomainId==1 .OR. totalStormsInSimulation<2) RETURN
 
         !Wait until the specified domain has task privilege
         CALL block_till_domain_privilege(theDomainId,currDomainWithPrivilege,ierr)
         IF(ierr .NE. 0) THEN
             CALL WRF_ERROR_FATAL('An error occurred while block-waiting for domain privilege.')
         ENDIF
+
+        !Determine the sleep time for the wait loop
+        !theActualSleepTime = 500 !Default is check iterations every 10ms
+        !IF(PRESENT(optionalSleepTimeMillisecs)) THEN
+        !    IF(optionalSleepTimeMillisecs>0) theActualSleepTime = optionalSleepTimeMillisecs
+        !ENDIF
+
         !DO WHILE(currDomainWithPrivilege .NE. theDomainId)
         !    CALL SLEEPQQ(theActualSleepTime)
         !ENDDO
         !!DO WHILE(.TRUE.)
         !!    IF(currDomainWithPrivilege == theDomainId) EXIT
         !!ENDDO
+#else
+        return
+#endif
     END SUBROUTINE
 
 
@@ -360,6 +375,7 @@ MODULE MODULE_SYNC_DOMAINS
         INTEGER,INTENT(IN),OPTIONAL :: optionalSleepTimeMillisecs   !The optional sleep time, in milliseconds
         INTEGER                     :: theActualSleepTime           !Will hold the actual sleep time for each iteration of the wait loop
 
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
         !Determine the sleep time for the wait loop
         theActualSleepTime = 1 !Default is check iterations every 10ms
         IF(PRESENT(optionalSleepTimeMillisecs)) THEN
@@ -373,6 +389,9 @@ MODULE MODULE_SYNC_DOMAINS
         !DO WHILE(.TRUE.)
         !    IF(currNestingLevelWithPrivilege == theNestingLevel) EXIT
         !ENDDO
+#else
+        return
+#endif
     END SUBROUTINE
 
 
@@ -385,10 +404,14 @@ MODULE MODULE_SYNC_DOMAINS
         INTEGER                     :: theActualSleepTime           !Will hold the actual sleep time for each iteration of the wait loop
 		INTEGER						:: theSum						!Holds the sum of the number of domains inside the barrier
 
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
 		!Check if the specified domain is in the currently privileged nesting level
         IF(domainNestingLevel(myDomainId) .NE. currNestingLevelWithPrivilege ) THEN
             CALL WRF_ERROR_FATAL("Invalid nesting level barrier request by an unprivileged domain.")
         ENDIF
+
+        !Domain D01 or a single storm do not need to wait at the barrier
+        IF(myDomainId==1 .OR. totalStormsInSimulation<2) RETURN
 
         !Determine the sleep time for the wait loop
         theActualSleepTime = 5  !Default is check iterations every 10ms
@@ -419,6 +442,9 @@ MODULE MODULE_SYNC_DOMAINS
         !    IF(SUM(nestingLevelDomainBarrier(domainNestingLevel(myDomainId),1:numDomainsInEachNestingLevel(domainNestingLevel(myDomainId)))) == numDomainsInEachNestingLevel(domainNestingLevel(myDomainId))) EXIT
         !ENDDO
         IF(isIntegrationVerbose) WRITE(*,*) '@@@@@ DOMAIN ',myDomainId,' LEAVING NEST LEVEL BARRIER'
+#else
+        return
+#endif
     END SUBROUTINE
 
 
@@ -428,6 +454,7 @@ MODULE MODULE_SYNC_DOMAINS
         IMPLICIT NONE
         INTEGER,INTENT(IN)          :: myDomainId                   !The ID of a domain in the specified nesting level
 
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
         !Check if the specified domain is in the currently privileged nesting level
         IF(domainNestingLevel(myDomainId) .NE. currNestingLevelWithPrivilege ) THEN
             CALL WRF_ERROR_FATAL("Invalid nesting level barrier request by an unprivileged domain.")
@@ -437,6 +464,9 @@ MODULE MODULE_SYNC_DOMAINS
         IF(isIntegrationVerbose) WRITE(*,*) '@@@@@ DOMAIN ',myDomainId,' ENTERED OMP NEST LEVEL BARRIER'
         !!$OMP BARRIER
         IF(isIntegrationVerbose) WRITE(*,*) '@@@@@ DOMAIN ',myDomainId,' EXITED OMP NEST LEVEL BARRIER'
+#else
+        return
+#endif
     END SUBROUTINE
 
 
@@ -447,13 +477,14 @@ MODULE MODULE_SYNC_DOMAINS
         INTEGER,INTENT(IN)          :: myDomainId                   !The ID of a domain in the specified nesting level
         INTEGER                     :: ierr                         !Used to determine p-thread barrier errors
 
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
         !Check if the specified domain is in the currently privileged nesting level
         IF(domainNestingLevel(myDomainId) .NE. currNestingLevelWithPrivilege ) THEN
             CALL WRF_ERROR_FATAL("Invalid nesting level barrier request by an unprivileged domain.")
         ENDIF
 
-        !Domain D01 does not need to wait at the barrier
-        IF(myDomainId==1) RETURN
+        !Domain D01 or a single storm do not need to wait at the barrier
+        IF(myDomainId==1 .OR. totalStormsInSimulation<2) RETURN
 
         !Invoke an P-thread BARRIER command so that all threads will synchronize at this point
         IF(isIntegrationVerbose) WRITE(*,*) '@@@@@ DOMAIN ',myDomainId,' ENTERED PTHREAD NEST LEVEL BARRIER'
@@ -462,6 +493,9 @@ MODULE MODULE_SYNC_DOMAINS
             CALL WRF_ERROR_FATAL('An error occurred in p-thread barrier in NEST_LEVEL_BARRIER_PTHREAD.')
         ENDIF
         IF(isIntegrationVerbose) WRITE(*,*) '@@@@@ DOMAIN ',myDomainId,' EXITED PTHREAD NEST LEVEL BARRIER'
+#else
+        return
+#endif
     END SUBROUTINE
 
 
@@ -473,6 +507,7 @@ MODULE MODULE_SYNC_DOMAINS
         INTEGER,INTENT(IN)  :: theDomainId          !The ID of the domain who should receive task privilege
         INTEGER             :: ierr                 !Used to check errors from using p-thread mutex
 
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
         !Check if the domain ID actually exists and call WRF_FATAL if not.
         IF(theDomainId > totalDomainsInSimulation) THEN
              CALL WRF_ERROR_FATAL("Invalid request to assign synchronized task privilege to an invalid nesting level.")
@@ -489,6 +524,9 @@ MODULE MODULE_SYNC_DOMAINS
         IF(ierr .NE. 0) THEN
             CALL WRF_ERROR_FATAL('An error occurred while forcing a domain privilege check in ASSIGN_PRIVILEGE_TO_DOMAIN.')
         ENDIF
+#else
+        return
+#endif
     END SUBROUTINE
 
 
@@ -500,6 +538,7 @@ MODULE MODULE_SYNC_DOMAINS
         INTEGER,INTENT(IN)  :: theNestingLevel  !The nesting level whose first domain should receive task privilege
         INTEGER             :: ierr             !Used to check errors from using p-thread mutex
 
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
         !Check if the nesting level actually exists and call WRF_FATAL if not.
         IF(theNestingLevel > maxSimulationNestingLevel) THEN
              CALL WRF_ERROR_FATAL("Invalid request to assign synchronized task privilege to an invalid nesting level.")
@@ -516,6 +555,9 @@ MODULE MODULE_SYNC_DOMAINS
         IF(ierr .NE. 0) THEN
             CALL WRF_ERROR_FATAL('An error occurred while forcing a domain privilege check in ASSIGN_PRIVILEGE_TO_NEST_LEVEL.')
         ENDIF
+#else
+        return
+#endif
     END SUBROUTINE
 
 
@@ -534,6 +576,7 @@ MODULE MODULE_SYNC_DOMAINS
         INTEGER                     :: nextLevel,nextDomain     !Holds the next nesting level or next domain to be assigned privilege
         INTEGER                     :: ierr                     !Used to check errors from using p-thread mutex
 
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
         !!$OMP CRITICAL (module_sync_domains_give_privilege)
         !Check if the specified domain currently has the task privilege
         IF(myDomainId .NE. currDomainWithPrivilege .OR. domainNestingLevel(myDomainId) .NE. currNestingLevelWithPrivilege ) THEN
@@ -573,6 +616,9 @@ MODULE MODULE_SYNC_DOMAINS
         IF(ierr .NE. 0) THEN
             CALL WRF_ERROR_FATAL('An error occurred while forcing a domain privilege check in CYCLE_DOMAIN_PRIVILEGE.')
         ENDIF
+#else
+        return
+#endif
     END SUBROUTINE
 
 END MODULE MODULE_SYNC_DOMAINS

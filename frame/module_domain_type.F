@@ -129,7 +129,7 @@ MODULE module_domain_type
       INTEGER                                             :: id
       INTEGER                                             :: domdesc
       INTEGER                                             :: communicator
-#ifdef THREADED_INTEGRATION
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
       INTEGER                                             :: communicator_x !Added by Thiago to allow multiple domains to integrate in parallel by using different MPI communicators
       INTEGER                                             :: communicator_y !Added by Thiago to allow multiple domains to integrate in parallel by using different MPI communicators
 #endif

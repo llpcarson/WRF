@@ -1,6 +1,6 @@
 RECURSIVE SUBROUTINE THREADED_INTEGRATION_DRIVER(theDomainId)
     USE MODULE_SYNC_DOMAINS     !Required to retrieve the domain grid pointer given the domain ID.
-    USE MODULE_INTEGRATE_NESTS  !Simply a copy of MODULE_INTEGRATE with the recursive INTEGRATE subroutine.
+    USE MODULE_INTEGRATE_NESTS  !Simply a copy of MODULE_INTEGRATE, which conatins the recursive INTEGRATE subroutine.
 
     IMPLICIT NONE
 
@@ -10,7 +10,7 @@ RECURSIVE SUBROUTINE THREADED_INTEGRATION_DRIVER(theDomainId)
     INCLUDE "mpif.h"
 
     !Get the grid pointer for the corresponding domain ID
-    CALL RETRIEVE_DOMAIN_POINTER(theDomainId, grid_ptr)
+    CALL RETRIEVE_DOMAIN_POINTER(theDomainId, grid_ptr) !References to all domains are stored into MODULE_SYNC_DOMAINS when they are spawned in the INTEGRATE routine.
     IF(theDomainId .NE. grid_ptr%id) THEN
         CALL WRF_ERROR_FATAL('In frame/THREADED_INTEGRATION_DRIVER.F, could not retrieve domain grid pointer.')
     ENDIF

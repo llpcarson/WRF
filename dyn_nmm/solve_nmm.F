@@ -99,12 +99,14 @@
 !
       INTEGER :: I,ICLTEND,IDF,IRTN,J,JC,JDF,K,KDF,LB,N_MOIST &
      &          ,NTSD_current,L
+
+      INTEGER, PARAMETER                    :: max_simulation_domains=9    !Added by Xuejin and Thiago: The max number of domains allowed in the simulation
+
 #ifdef HWRF
-#ifdef HWRFX
+#ifdef HRD_MULTIPLE_STORMS
 !XUEJIN's doing
       INTEGER                               :: kid1
-      INTEGER, PARAMETER                    :: max_dom=9
-      INTEGER,SAVE,DIMENSION(max_dom)       :: NTSD_restart1
+      INTEGER,SAVE,DIMENSION(max_simulation_domains)       :: NTSD_restart1
 #else
 !zhang's doing
       INTEGER,SAVE :: NTSD_restart1,NTSD_restart2,NTSD_restart3
@@ -145,20 +147,20 @@
 !-----------------------------------------------------------------------
 !***  TIMING VARIABLES
 !-----------------------------------------------------------------------
-      real,save,DIMENSION(max_dom) :: solve_tim,exch_tim,pdte_tim,adve_tim,vtoa_tim        &    !Modified by Thiago. Added DIMENSION(max_dom) to all timing variables. These should be migrated to the grid object.
-                        &,            vadz_tim,hadz_tim,eps_tim,vad2_tim,had2_tim          &
-                        &,            radiation_tim,rdtemp_tim,turbl_tim,cltend_tim        &
-                        &,            cucnvc_tim,gsmdrive_tim,hdiff_tim,bocoh_tim          &
-                        &,            pfdht_tim,ddamp_tim,bocov_tim,uv_htov_tim,sum_tim    &
+      real,save,DIMENSION(max_simulation_domains) ::  solve_tim,exch_tim,pdte_tim,adve_tim,vtoa_tim        &    !Modified by Thiago. Added DIMENSION(max_simulation_domains) to all timing variables. These should be migrated to the grid object.
+                                        &,            vadz_tim,hadz_tim,eps_tim,vad2_tim,had2_tim          &
+                                        &,            radiation_tim,rdtemp_tim,turbl_tim,cltend_tim        &
+                                        &,            cucnvc_tim,gsmdrive_tim,hdiff_tim,bocoh_tim          &
+                                        &,            pfdht_tim,ddamp_tim,bocov_tim,uv_htov_tim,sum_tim    &
 #ifdef HWRF
-                        &,            adjppt_tim,sst_tim,flux_tim
+                                        &,            adjppt_tim,sst_tim,flux_tim
 #else
-                        &,            adjppt_tim
+                                        &,            adjppt_tim
 #endif
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      real,save,DIMENSION(max_dom) :: loadimbal_tim,previmbal_tim   !Modified by Thiago. Added DIMENSION(max_dom) to all timing variables. These should be migrated to the grid object.
+      real,save,DIMENSION(max_simulation_domains) :: loadimbal_tim,previmbal_tim   !Modified by Thiago. Added DIMENSION(max_simulation_domains) to all timing variables. These should be migrated to the grid object.
 #endif
-      real,save,DIMENSION(max_dom) :: exch_tim_max                  !Modified by Thiago. Added DIMENSION(max_dom) to all timing variables. These should be migrated to the grid object.
+      real,save,DIMENSION(max_simulation_domains) :: exch_tim_max                  !Modified by Thiago. Added DIMENSION(max_simulation_domains) to all timing variables. These should be migrated to the grid object.
       real :: btim,btimx,startTime,endTime                          !Added by Thiago: variables "startTime" and "endTime" measure timing in regions that were not measured before
       real :: et_max,this_tim
       integer :: n_print_time
@@ -255,9 +257,9 @@
       IF(NTSD_current==0)THEN
         IF(GRID%RESTART.AND.GRID%TSTART>0.)THEN
 #ifdef HWRF
-#ifdef HWRFX
+#ifdef HRD_MULTIPLE_STORMS
 !XUEJIN's doing
-          do kid1=1,max_dom
+          do kid1=1,max_simulation_domains
           if( grid%id .eq. kid1 ) NTSD_restart1(kid1)=INT(grid%TSTART*3600./GRID%DT+0.5)
           end do
 #else
@@ -273,7 +275,7 @@
           IHRST=GRID%GMT
           grid%nstart_hour=IHRST
 #ifdef HWRF
-#ifdef HWRFX
+#ifdef HRD_MULTIPLE_STORMS
 !XUEJIN's doing
           NTSD_restart1=0
 #else
@@ -288,9 +290,9 @@
         ENDIF
       ENDIF
 #ifdef HWRF
-#ifdef HWRFX
+#ifdef HRD_MULTIPLE_STORMS
 !XUEJIN's doing
-      do kid1=1,max_dom
+      do kid1=1,max_simulation_domains
       if( grid%id .eq. kid1 ) grid%ntsd=NTSD_restart1(kid1)+NTSD_current
       end do
 #else
@@ -611,7 +613,7 @@
          IDT=MOD(grid%NTSD,nrand)
  
          IF(IDT.EQ.0 .OR. grid%NTSD .EQ. 0)THEN
-#ifndef THREADED_INTEGRATION
+#ifndef HRD_THREADED_INTEGRATION
             call start_timing
 #endif
             call wrf_message('Update random numbers...')
@@ -632,7 +634,7 @@
             write(message,'(A,": random(",I0,",",I0,") = ",E15.10)') 'after call',imid,jmid,grid%random(imid,jmid)
             call wrf_debug(3,message)
 
-#ifndef THREADED_INTEGRATION
+#ifndef HRD_THREADED_INTEGRATION
             call end_timing('Updating random numbers')
 #endif
          ENDIF    ! for IF(IDT.EQ.0 .OR. NTSD .EQ. 0)
@@ -850,7 +852,7 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 #ifdef HWRF
-#ifdef HWRFX
+#ifdef HRD_MULTIPLE_STORMS
       write(message,*)' No Ocean Coupling Run'
       call wrf_message(trim(message))
 #else
@@ -1813,7 +1815,7 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
 !-------------------------------------------------------------------------------------
 !*** GET SSTs FROM DMITRY's COUPLER ON TO THE PARENT AND NESTED GRID
 !-------------------------------------------------------------------------------------
-#ifdef HWRFX
+#ifdef HRD_MULTIPLE_STORMS
       write(message,*)' No Ocean Coupling Run'
       call wrf_message(trim(message))
 #else
@@ -1921,7 +1923,7 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
 
 !
 !
-#ifdef HWRFX
+#ifdef HRD_MULTIPLE_STORMS
       write(message,*)' No Ocean Coupling Run'
       call wrf_message(trim(message))
 #else
@@ -2096,7 +2098,7 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
 !
 !----------------------------------------------------------------------
        call wrf_message('call cucnvc')
-#ifndef THREADED_INTEGRATION
+#ifndef HRD_THREADED_INTEGRATION
         call start_timing
 #endif
         IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' BEFORE CUCNVC' !Added by Thiago for debug purposes
@@ -2133,7 +2135,7 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
      &             ,IPS,IPE,JPS,JPE,KPS,KPE                            &
      &             ,ITS,ITE,JTS,JTE,KTS,KTE)
         IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' AFTER CUCNVC' !Added by Thiago for debug purposes
-#ifndef THREADED_INTEGRATION
+#ifndef HRD_THREADED_INTEGRATION
         call end_timing('cucnvc')
 #endif
 !----------------------------------------------------------------------
@@ -2742,7 +2744,7 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
 !
 #ifdef MOVE_NESTS
    IF ( grid%num_moves.EQ.-99 ) THEN
-#ifndef THREADED_INTEGRATION
+#ifndef HRD_THREADED_INTEGRATION
       call start_timing()
 #endif
       IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' START STATS_FOR_MOVE'
@@ -2761,7 +2763,7 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
       IF(IS_INTEGRATION_VERBOSE()) WRITE(*,*) '@@@@@ DOMAIN ',grid%id,' END STATS_FOR_MOVE'
 3303  format('stats_for_move on domain ',I0)
       write(message,3303) grid%id
-#ifndef THREADED_INTEGRATION
+#ifndef HRD_THREADED_INTEGRATION
       call end_timing(message)
 #endif
    CALL wrf_debug ( 100 , 'nmm stats_for_move: after advection' )
@@ -2797,7 +2799,7 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
 !
 !
 !
-#ifdef HWRFX
+#ifdef HRD_MULTIPLE_STORMS
       write(message,*)' No Ocean Coupling Run'
       call wrf_message(trim(message))
 #else

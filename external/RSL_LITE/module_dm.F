@@ -1422,9 +1422,9 @@ CONTAINS
       INCLUDE 'mpif.h'
       LOGICAL mpi_inited
       INTEGER mpi_comm_here, mpi_comm_local, comdup,  mytask, ntasks, ierr, io_status
-#  if (defined(_OPENMP) && defined(MPI2_THREAD_SUPPORT)) || defined(THREADED_INTEGRATION)
+#  if (defined(_OPENMP) && defined(MPI2_THREAD_SUPPORT)) || (defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION))
       INTEGER thread_support_provided, thread_support_requested
-      INTEGER total_domains,total_storms,domain_parent_id   !Variables added by Thiago for the MPI initialization logic
+      INTEGER total_storms   !Variable added by Thiago for the MPI initialization logic
 #endif
       INTEGER i, j
       INTEGER, ALLOCATABLE :: icolor(:)
@@ -1434,23 +1434,11 @@ CONTAINS
       CALL MPI_INITIALIZED( mpi_inited, ierr )
       IF ( .NOT. mpi_inited ) THEN
 !Added by Thiago: In threaded integration mode, use MPI_THREAD_SINGLE for single-domain or single storm runs and MPI_THREAD_MULTIPLE otherwise.
-#if defined(THREADED_INTEGRATION)
-        !Count the number of nests whose parent domain is D01. This is the number of storms being forecasted in high-resolution (e.g. the number of high-resolution nest-pairs).
-        total_storms = 0    !Assume this is D01-only run
-        CALL nl_get_max_dom(1,total_domains)    !Get the total number of domains
-        DO i=1,total_domains
-            CALL nl_get_parent_id(i,domain_parent_id)
-            IF(domain_parent_id==1) total_storms = total_storms + 1
-        END DO
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
+		!Determine the MPI mode either through the environmental variable WRF_NMM_MPI_MODE or the simulation storm count from the namelist.
+		CALL get_multistorm_mpi_mode(thread_support_requested,total_storms,ierr);
 
-        !Check if 2 or more storms were found
-        IF(total_storms .GE. 2) THEN
-            PRINT *,'@@@@@ INITIALIZING MPI_THREAD_MULTIPLE IN SPLIT_COMMUNICATOR.'
-            thread_support_requested = MPI_THREAD_MULTIPLE
-        ELSE
-            PRINT *,'@@@@@ INITIALIZING MPI_THREAD_SINGLE IN SPLIT_COMMUNICATOR.'
-            thread_support_requested = MPI_THREAD_SINGLE
-        ENDIF
+        PRINT *,'@@@@@ INITIALIZING MPI MODE ',thread_support_requested' FOR ',total_storms,' STORMS, IERR=',ierr
 
         !Initialize MPI with the required level of thread safety
         CALL mpi_init_thread ( thread_support_requested, thread_support_provided, ierr )

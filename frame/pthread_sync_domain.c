@@ -1,3 +1,4 @@
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
 /**
     This code is part of "Fortran-C-Fortran" bridge designed to allow MODULE_SYNC_DOMAINS to use MUTEXES and CONDITION VARIABLES
     to schedule domain task privilege access instead of using the Fortran SLEEP subroutine to create a polling wait loop.
@@ -20,10 +21,11 @@ static pthread_barrier_t domainTaskPrivilegeSyncBarrier;                        
 void init_pthread_sync_interface_(int* max_dom, int* totalStorms, int* ierr)
 {
     //Local variables
-    int i;
+    int i, count;
 
     //Ensure the number of domains is within valid range
-    if(*max_dom > MAX_DOMAINS_IN_PARALLEL)
+    *ierr=0;    //Initialize the error flag to 0
+    if(*max_dom < 1 && *max_dom > MAX_DOMAINS_IN_PARALLEL)
     {
         *ierr=99999999;
         return;
@@ -41,7 +43,8 @@ void init_pthread_sync_interface_(int* max_dom, int* totalStorms, int* ierr)
 
     //Initialize the synchronization barrier
     //printf("@@@@@ Initializing p-thread barrier.\n");
-    *ierr=pthread_barrier_init(&domainTaskPrivilegeSyncBarrier, NULL, *totalStorms);
+    count = (*totalStorms) < 1 ? 1 : *totalStorms;  //A value of 1 causes the P-thread barrier to return immediately
+    *ierr=pthread_barrier_init(&domainTaskPrivilegeSyncBarrier, NULL, count);
     if(*ierr!=0) return;
 }
 
@@ -113,8 +116,6 @@ void force_check_domain_privilege_(int* theDomainId, int* ierr)
     if(*ierr!=0) return;
 }
 
-
-
-
-
-
+#else
+void dummyuselessfunction_(){}
+#endif

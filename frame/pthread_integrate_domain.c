@@ -1,3 +1,4 @@
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
 /**
     This code is part of "Fortran-C-Fortran" bridge designed to allow WRF's recursive INTEGRATE subroutine to
     spawn P-threads that integrate multiple nest-pairs in parallel. Each thread handles the integrattion of
@@ -21,7 +22,7 @@ static pthread_attr_t integrationPThreadsAttrs;                                 
 
 
 //This function initializes the thread variables required for parallel integration. It should be called once by WRF.
-void init_hrd_pthread_interface_(int* max_dom, int* ierr)
+void init_threaded_integration_(int* max_dom, int* ierr)
 {
     //Local variables
     int i;
@@ -47,7 +48,7 @@ void init_hrd_pthread_interface_(int* max_dom, int* ierr)
 
 
 //This function is invoked by a worker p-thread. It invokes a Fortran routine that then calls WRFS's recursive INTEGRATE subroutine for the specified domain.
-void* pthread_integrate_domain_worker(void* domainIdVoidPtr)
+void* threaded_integration_worker(void* domainIdVoidPtr)
 {
     //Call the Fortran routine that invokes WRFS's recursive INTEGRATE subroutine
     threaded_integration_driver_((int *)domainIdVoidPtr);
@@ -58,11 +59,11 @@ void* pthread_integrate_domain_worker(void* domainIdVoidPtr)
 
 
 //This function is invoked by the Fortran INTEGRATE subroutine to spawn threads that will integrate multiple domains in parallel.
-void pthread_integrate_domain_(int *domainId, int *ierr)
+void integrate_domain_by_thread_(int *domainId, int *ierr)
 {
     //threaded_integration_driver_(domainId);
     pthread_t* thread = &integrationPThreads[(*domainId)-1];                                                //Get the corresponding thread. Note:  C indexing starts at 0, but lowest domain ID is 1.
-    *ierr = pthread_create(thread, &integrationPThreadsAttrs, pthread_integrate_domain_worker, domainId);   //Start the thread
+    *ierr = pthread_create(thread, &integrationPThreadsAttrs, threaded_integration_worker, domainId);   //Start the thread
     if(*ierr == 0)
     {
         integrationPThreadsActive[(*domainId)-1] = 1;   //Store thread activity information
@@ -88,3 +89,7 @@ void wait_for_integration_done_()
         }
     }
 }
+
+#else
+void dummyuselessfunction(){}
+#endif

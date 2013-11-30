@@ -8,12 +8,14 @@ module_configure.o: \
                 module_wrf_error.o \
 		module_driver_constants.o 
 
+#Modified by Thiago: Added get_multistorm_mpi_mode.o as dependency.
 module_dm.o: module_machine.o module_state_description.o module_wrf_error.o \
 		module_domain.o \
 		module_driver_constants.o \
 		module_timing.o \
 		module_comm_nesting_dm.o \
 		module_configure.o module_comm_dm.o
+		get_multistorm_mpi_mode.o
 
 module_timing.o: hires_timer.o clog.o
 
