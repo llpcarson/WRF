@@ -193,5 +193,7 @@ void get_multistorm_mpi_mode_(int* mpiMode, int* totalStorms, int *ierr)
     printf("ierr=%d totalStorms=%d mpiMode=%d\n",ierr,totalStorms,mpiMode);
 }*/
 #else
+
 void dummyuselessfunction_(){}
+
 #endif

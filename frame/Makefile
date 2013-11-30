@@ -5,7 +5,7 @@ MAKE    =       make -i -r
 RM      =       rm -f
 
 
-#Modified by Thiago: Added new (module_integrate_nests.o,threaded_integration_driver.o,pthread_integrate_domain.o,pthread_sync_domain.o,module_sync_domains.o,get_multistorm_mpi_mode.o)
+#Modified by Thiago: Added new (module_integrate_nests.o,threaded_integration_driver.o,pthread_integrate_domain.o,pthread_integrate_domain_dummy.o,pthread_sync_domain.o,module_sync_domains.o,get_multistorm_mpi_mode.o)
 MODULES =       module_driver_constants.o  \
                 module_domain_type.o       \
                 module_streams.o           \
@@ -14,6 +14,7 @@ MODULES =       module_driver_constants.o  \
                 module_integrate_nests.o   \
                 threaded_integration_driver.o   \
                 pthread_integrate_domain.o \
+                pthread_integrate_domain_dummy.o \
                 pthread_sync_domain.o      \
                 module_sync_domains.o      \
                 get_multistorm_mpi_mode.o  \
@@ -181,8 +182,9 @@ module_internal_header_util.o :
 clean:
 	@ echo 'use the clean script'
 
+#Modified by Thiago: Added call to "tools/setupThreadedIntegration.ksh" to create "frame/module_integrate_nests.F" and "frame/pthread_integrate_domain_dummy.c" needed for threaded integration.
 module_state_description.F : ../Registry/$(REGISTRY)
-		  ( cd .. ; tools/registry $(ARCHFLAGS) $(ENVCOMPDEFS) -DNEW_BDYS Registry/$(REGISTRY) ) ; 
+		  ( cd .. ; tools/registry $(ARCHFLAGS) $(ENVCOMPDEFS) -DNEW_BDYS Registry/$(REGISTRY) ; tools/setupThreadedIntegration.ksh ) ; 
 
 md_calls.inc : md_calls.m4
 	if [ "$(M4)" = NA ] ; then \
