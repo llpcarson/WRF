@@ -5,7 +5,7 @@ MAKE    =       make -i -r
 RM      =       rm -f
 
 
-#Modified by Thiago: Added new (module_integrate_nests.o,threaded_integration_driver.o,pthread_integrate_domain.o,pthread_sync_domain.o,module_sync_domains.o)
+#Modified by Thiago: Added new (module_integrate_nests.o,threaded_integration_driver.o,pthread_integrate_domain.o,pthread_sync_domain.o,module_sync_domains.o,get_multistorm_mpi_mode.o)
 MODULES =       module_driver_constants.o  \
                 module_domain_type.o       \
                 module_streams.o           \
@@ -16,6 +16,7 @@ MODULES =       module_driver_constants.o  \
                 pthread_integrate_domain.o \
                 pthread_sync_domain.o      \
                 module_sync_domains.o      \
+                get_multistorm_mpi_mode.o  \
                 module_timing.o            \
                 module_configure.o         \
                 module_tiles.o             \

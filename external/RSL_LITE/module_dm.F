@@ -1438,7 +1438,7 @@ CONTAINS
 		!Determine the MPI mode either through the environmental variable WRF_NMM_MPI_MODE or the simulation storm count from the namelist.
 		CALL get_multistorm_mpi_mode(thread_support_requested,total_storms,ierr);
 
-        PRINT *,'@@@@@ INITIALIZING MPI MODE ',thread_support_requested' FOR ',total_storms,' STORMS, IERR=',ierr
+        PRINT *,'@@@@@ INITIALIZING MPI MODE ',thread_support_requested,' FOR ',total_storms,' STORMS, IERR=',ierr
 
         !Initialize MPI with the required level of thread safety
         CALL mpi_init_thread ( thread_support_requested, thread_support_provided, ierr )
