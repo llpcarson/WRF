@@ -100,7 +100,7 @@
       INTEGER :: I,ICLTEND,IDF,IRTN,J,JC,JDF,K,KDF,LB,N_MOIST &
      &          ,NTSD_current,L
 
-      INTEGER, PARAMETER                    :: max_simulation_domains=9    !Added by Xuejin and Thiago: The max number of domains allowed in the simulation
+      INTEGER, PARAMETER                    :: max_simulation_domains=11    !Added by Xuejin and Thiago: The max number of domains in the simulation. Currently hard-coded to 5 storms. This should eventually be replaced with CONFIG_FLAGS%MAX_DOM.
 
 #ifdef HWRF
 #ifdef HRD_MULTIPLE_STORMS
@@ -453,8 +453,7 @@
 !-----------------------------------------------------------------------
 !***  SET TIMING VARIABLES TO ZERO AT START OF FORECAST.
 !-----------------------------------------------------------------------
-      !if(grid%ntsd==0)then
-      if(.TRUE.)then
+      if(grid%ntsd==0)then
         solve_tim(grid%id)=0.
         exch_tim(grid%id)=0.
         pdte_tim(grid%id)=0.
@@ -2654,8 +2653,7 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
       sum_tim(grid%id)=sum_tim(grid%id) + loadimbal_tim(grid%id) + previmbal_tim(grid%id)
 #endif
 !
-      !if(mod(grid%ntsd,n_print_time)==0)then
-      if(.TRUE.)then
+      if(mod(grid%ntsd,n_print_time)==0)then
         CALL WAIT_FOR_DOMAIN_PRIVILEGE(grid%id) !Added by Thiago to synchronize the printing of timing statistics
         write(message,'("START TIMING STATISTICS FOR DOMAIN ",I2," NSTD ",I5,":")')grid%id,grid%ntsd
         call wrf_message(trim(message))
@@ -2718,12 +2716,10 @@ IF(isVerboseHaloTime .and. wrf_dm_on_monitor()) WRITE(*,*)'DOMAIN ',grid%id,' TI
 !        write(message,*)' exch_tim_max=',exch_tim_max(grid%id)*1.e-3
 !        call wrf_message(trim(message))
 !
-        if(mod(grid%ntsd,n_print_time)==0)then
         call field_stats(grid%t,mype,mpi_comm_comp                     &
      &                  ,ids,ide,jds,jde,kds,kde                       &
      &                  ,ims,ime,jms,jme,kms,kme                       &
      &                  ,its,ite,jts,jte,kts,kte)
-        endif
         CALL CYCLE_DOMAIN_PRIVILEGE(grid%id)    !Added by Thiago to synchronize the printing of timing statistics
       endif
 !
