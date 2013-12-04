@@ -7,7 +7,7 @@ RECURSIVE SUBROUTINE THREADED_INTEGRATION_DRIVER(theDomainId)
     !Variables
     INTEGER,INTENT(IN)      ::  theDomainId
     TYPE(DOMAIN),POINTER    ::  grid_ptr
-    INCLUDE "mpif.h"
+    !INCLUDE "mpif.h"
 
     !Get the grid pointer for the corresponding domain ID
     CALL RETRIEVE_DOMAIN_POINTER(theDomainId, grid_ptr) !References to all domains are stored into MODULE_SYNC_DOMAINS when they are spawned in the INTEGRATE routine.

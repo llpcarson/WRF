@@ -44,7 +44,9 @@ MODULE MODULE_SYNC_DOMAINS
         USE MODULE_DM,ONLY: local_communicator,local_communicator_x,local_communicator_y    !These MPI communicators will be duplicated for each domain
 
         IMPLICIT NONE
+#if defined(HRD_MULTIPLE_STORMS) && defined(HRD_THREADED_INTEGRATION)
         INCLUDE 'mpif.h'                                                                    !Required to invoke MPI_COMM_DUP to create MPI compute node communicators for each model domain
+#endif
         INTEGER                         ::  domainId, parentId, level, nestid,ierr
         INTEGER,DIMENSION(0:2)          ::  lastDomainIndexAssignedInLevel
 
