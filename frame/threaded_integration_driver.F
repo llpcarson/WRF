@@ -1,6 +1,6 @@
 RECURSIVE SUBROUTINE THREADED_INTEGRATION_DRIVER(theDomainId)
     USE MODULE_SYNC_DOMAINS     !Required to retrieve the domain grid pointer given the domain ID.
-    USE MODULE_INTEGRATE_NESTS  !Simply a copy of MODULE_INTEGRATE, which conatins the recursive INTEGRATE subroutine.
+    USE MODULE_INTEGRATE  !Simply a copy of MODULE_INTEGRATE, which conatins the recursive INTEGRATE subroutine.
 
     IMPLICIT NONE
 

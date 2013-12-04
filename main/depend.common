@@ -82,24 +82,9 @@ module_integrate.o: module_domain.o \
 		module_configure.o \
 		$(ESMF_MOD_DEPENDENCE)
 
-#Added by Thiago. This is a copy of MODULE_INTEGRATE with calls to dymmy routines in "pthread_integrate_domain_dummy.c". This should be eventually removed and only MODULE_INTEGRATE should be used.
-module_integrate_nests.o: module_domain.o \
-		module_sync_domains.o \
-		pthread_integrate_domain_dummy.o \
-		module_wrf_error.o \
-		module_timing.o \
-		module_driver_constants.o \
-		module_state_description.o \
-		module_nesting.o \
-		module_configure.o \
-		$(ESMF_MOD_DEPENDENCE)
-
 #Added by Thiago. It carries the Fortran routine invoked by p-threads during parallel integration.
 threaded_integration_driver.o: module_sync_domains.o \
-		module_integrate_nests.o module_wrf_error.o
-
-#Added by Thiago. This is the "C" code used to spawn p-threads that invoke the recursive INTEGRATE routine for multiple domains in parallel.
-pthread_integrate_domain.o: threaded_integration_driver.o
+		module_integrate.o module_wrf_error.o
 
 #This new module was added by Thiago. It allows domain synchronized access to various parts of the model code.
 module_sync_domains.o: module_driver_constants.o \
