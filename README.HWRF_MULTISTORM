@@ -1,0 +1,102 @@
+***************************************************************************************************
+*  HWRF Basin-scale with multiple storms: sequential and threaded integration of multiple storms  *
+***************************************************************************************************
+
+---------------------------------------------------------------------------------------------------
+|  INTRODUCTION                                                                                   |
+---------------------------------------------------------------------------------------------------
+
+This document explains the modifications that were made to the original 2013 HWRF model to
+allow it to support the integration of multiple storms using high-resolution storm-following
+nests. The original 2013 HWRF model can track a single storm using a pair of nested high
+resolution domains. The modifications described here allow the 2013 HWRF model to track
+multiple storms simultaneously using multiple pairs of high-resolution nested domains and,
+in addition, to integrate the domains corresponding to these multiple storms in parallel.
+
+The modifications to the code are controlled by 2 new environmental variables. These 2 new
+variables translate into compiler IFDEF macros that either hide or include the new code during
+compilation:
+
+
+#For multi-storm forecasts in high-resolution using WRF's default sequential domain integration.
+export HRD_MULTIPLE_STORMS=1
+
+#Extends the above mode to provide support for threaded/parallel integration of multiple storms.
+export HRD_THREADED_INTEGRATION=1
+
+
+There are no new namelist.input variables to deal with. Instead, some of the variables in the
+original namelist.input file simply have to be extended to provide values for the additional
+nested domains used in a multi-storm forecast. Otherwise, all other features of the original
+2013 HWRF remain intact, making forecasting multiple storms in high-resolution as simple as
+forecasting a single storm. When the model is compiled without these 2 new environmental
+variables, it will behave just like the original 2013 HWRF model, supporting the integration
+of a single storm in high-resolution. Now, let's describe in more details what each of these
+2 new environmental variable do in details.
+
+The first new environmental variable is called "HRD_MULTIPLE_STORMS". Simply setting its value
+to "1" will cause it to be defined. This variable enables the HWRF model to be compiled with
+support for multiple storms (i.e. multiple storm-tracking moving nests). When compiled in this
+mode, the model will integrate all domains sequentially during each integration time-step. First,
+it will integrate the D01 static parent domain. Next, it will choose one of the moving nests and
+sequentially integratate the nests within its hierarchy. The process repeates until all moving
+nests have been integrated. This sequential domain integration scheme is inherited from the
+original WRF_NMM framework. Note that the moving nests tracking different storms never interact
+with each other directly (i.e. there is no direct exchange of data between nests tracking different
+storms). For example, suppose that a 09:03km nest-pair composed of domains D02-D03 are tracking
+storm 1 and that another 09:03km nest-pair composed of domains D04-D05 are tracking storm 2. The
+two different groups of domains, representing diffrent storms, will never interact
+(i.e. they will never directly exchange data with each other). All storm-to-storm interaction,
+including the impact of high-resolution integration provided by the moving nests, takes place
+at the static D01 parent domain level, through the nest-to-parent feedback process. What this
+means is that different groups of nests could potentially be integrated in parallel with each
+other since no interaction takes place among different nest groups. This could lead to enormous
+gains in computational runtime, which is extactly what the source code enabled by the second new
+environmental variable, HRD_THREADED_INTEGRATION, seeks to address as described below.
+
+The second new environmental variable is called "HRD_THREADED_INTEGRATION". Simply setting its
+value to "1" will cause it to be defined. This variable will only take effect if the first
+new environmental variable "HRD_MULTIPLE_STORMS" is also defined. That is because threaded, or
+parallel, integration of multiple storms cannot be performed unless the model first supports
+the integration of multiple storms using high-resolution nests. This new variable enables the
+HWRF model to be compiled with support for "multi-threaded" integration of multiple storms.
+When compiled in this mode, the model will integrate in parallel the different groups of nested
+domains corresponding to different storms, each storm being integrated by its own independent
+thread. For example, suppose that domains D02-D03 track storm 1 and that domains D04-D05 track
+storm 2. Under threaded integration, one thread will integrate domains D02-D03 sequentially while
+another thread will in parallel also integrate domains D04-D05 sequentially. This corresponds to
+the threaded/parallel integration of multiple storms.
+
+
+---------------------------------------------------------------------------------------------------
+|  LIST OF MODEL MODIFICATIONS                                                                    |
+---------------------------------------------------------------------------------------------------
+
+Below is a list of both the previously existing source code files that were modified as well as the
+new source code files that were added to support the 2 new model integration modes.
+
+1)Existing source code files with significant code additions:
+frame/module_integrate.F
+dyn_nmm/solve_nmm.F
+
+2)Existing source code files with minimal code additions:
+external/RSL_LITE/module_dm.F
+frame/module_domain_type.F
+dyn_nmm/BUCKETS.F
+dyn_nmm/module_HIFREQ.F
+dyn_nmm/module_ADVECTION.F
+dyn_nmm/module_IGWAVE_ADJUST.F
+
+3)New source code files added to support threaded multi-storm integration:
+frame/pthread_integrate_domain.c
+frame/threaded_integration_driver.F
+frame/module_sync_domains.F
+frame/pthread_sync_domain.c
+frame/get_multistorm_mpi_mode.c
+
+
+---------------------------------------------------------------------------------------------------
+|  COMPILING AND RUNNING THE HWRF MULTISTORM BASINSCALE MODEL                                     |
+---------------------------------------------------------------------------------------------------
+
+

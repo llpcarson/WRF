@@ -1,0 +1,42 @@
+#!/bin/ksh -l
+
+#Load require modules
+module purge
+module load intel mvapich2 netcdf
+
+#Export required environmental variables
+export WRFIO_NCD_LARGE_FILE_SUPPORT=1
+export WRF_NMM_CORE=1
+export WRF_NMM_NEST=1
+export HWRF=1
+export HWRFX=1
+export OCEAN=0
+export HRD_MULTIPLE_STORMS=1
+export HRD_THREADED_INTEGRATION=1
+
+#Ensure a clean compile:
+./clean -a
+find . -name '*.a' -o -name '*.o' -o -name '*.mod' | xargs rm -f
+rm -f Registry/Registry tools/gen_comms.c
+rm -f hwrf_wrf hwrf_real_nmm hwrf_diffwrf_3dvar
+
+# Configure for Linux, Intel with MPI (DMPAR):
+( echo 19 ; echo 2 ) | ./configure 2>&1 | head -30000
+
+#Modify the configure.wrf file.
+temp=`grep -E "^CONFIG_BUF_LEN" configure.wrf | awk '(NR==1){print}'`
+sed -i "s:$temp:CONFIG_BUF_LEN = 65536:" configure.wrf
+
+temp=`grep -E "^ENVCOMPDEFS" configure.wrf | awk '(NR==1){print}'`
+sed -i "s:$temp:ENVCOMPDEFS = -DHWRF=1 -DHRD_MULTIPLE_STORMS=1 -DHRD_THREADED_INTEGRATION=1:" configure.wrf
+
+temp=`grep -E "^FCFLAGS" configure.wrf | awk '(NR==1){print}'`
+sed -i "s:$temp:FCFLAGS = \$(FCOPTIM) \$(FCBASEOPTS) -heap-arrays -axAVX -reentrancy threaded -recursive -auto:" configure.wrf
+
+temp=`grep -E "^CFLAGS_LOCAL" configure.wrf | awk '(NR==1){print}'`     #Get the current value of FCLAGS_LOCAL...
+sed -i "s:$temp:CFLAGS_LOCAL = -w -O3 -ip -axAVX -pthread -DHRD_MULTIPLE_STORMS=1 -DHRD_THREADED_INTEGRATION=1:" configure.wrf #...uncomment it and add flags.
+
+# Compile wrf and real:
+./compile nmm_real > make_log 2>&1  &
+
+echo "Compilation has started. See log file make_log for details."
