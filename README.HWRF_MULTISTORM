@@ -1,29 +1,31 @@
 ***************************************************************************************************
 *  HWRF Basin-scale with multiple storms: sequential and threaded integration of multiple storms  *
+*                                                                                                 *
+*         For issues or questions, please contact Thiago.Quirino@noaa.gov or 305-361-4337         *
+*                                                                                                 *
 ***************************************************************************************************
 
 ---------------------------------------------------------------------------------------------------
-|  INTRODUCTION                                                                                   |
+|                                         INTRODUCTION                                            |
 ---------------------------------------------------------------------------------------------------
 
 This document explains the modifications that were made to the original 2013 HWRF model to
 allow it to support the integration of multiple storms using high-resolution storm-following
 nests. The original 2013 HWRF model can track a single storm using a pair of nested high
 resolution domains. The modifications described here allow the 2013 HWRF model to track
-multiple storms simultaneously using multiple pairs of high-resolution nested domains and,
-in addition, to integrate the domains corresponding to these multiple storms in parallel.
+multiple storms simultaneously using multiple pairs of high-resolution nested domains (or
+multiple single moving nests, each following a storm) and also to integrate the domains
+corresponding to these multiple storms in parallel.
 
 The modifications to the code are controlled by 2 new environmental variables. These 2 new
 variables translate into compiler IFDEF macros that either hide or include the new code during
 compilation:
-
 
 #For multi-storm forecasts in high-resolution using WRF's default sequential domain integration.
 export HRD_MULTIPLE_STORMS=1
 
 #Extends the above mode to provide support for threaded/parallel integration of multiple storms.
 export HRD_THREADED_INTEGRATION=1
-
 
 There are no new namelist.input variables to deal with. Instead, some of the variables in the
 original namelist.input file simply have to be extended to provide values for the additional
@@ -39,15 +41,15 @@ to "1" will cause it to be defined. This variable enables the HWRF model to be c
 support for multiple storms (i.e. multiple storm-tracking moving nests). When compiled in this
 mode, the model will integrate all domains sequentially during each integration time-step. First,
 it will integrate the D01 static parent domain. Next, it will choose one of the moving nests and
-sequentially integratate the nests within its hierarchy. The process repeates until all moving
-nests have been integrated. This sequential domain integration scheme is inherited from the
-original WRF_NMM framework. Note that the moving nests tracking different storms never interact
-with each other directly (i.e. there is no direct exchange of data between nests tracking different
-storms). For example, suppose that a 09:03km nest-pair composed of domains D02-D03 are tracking
-storm 1 and that another 09:03km nest-pair composed of domains D04-D05 are tracking storm 2. The
-two different groups of domains, representing diffrent storms, will never interact
-(i.e. they will never directly exchange data with each other). All storm-to-storm interaction,
-including the impact of high-resolution integration provided by the moving nests, takes place
+sequentially integratate the higher resolution nests within its hierarchy. The process is repeated
+until all moving nests have been integrated. This sequential domain integration scheme is inherited
+from the original WRF_NMM framework. Note that the moving nests tracking different storms never
+interact with each other directly (i.e., there is no direct exchange of data between the moving
+nests tracking different storms). For example, suppose that a 09:03km nest-pair composed of domains
+D02-D03 are tracking Storm 1 and that another 09:03km nest-pair composed of domains D04-D05 are
+tracking Storm 2. The two different groups of domains, representing different storms, will never
+directly exchange data with each other. Instead, all storm-to-storm interaction, including the
+impact of the high-resolution numerical integration provided by the moving nests, takes place
 at the static D01 parent domain level, through the nest-to-parent feedback process. What this
 means is that different groups of nests could potentially be integrated in parallel with each
 other since no interaction takes place among different nest groups. This could lead to enormous
@@ -62,41 +64,162 @@ the integration of multiple storms using high-resolution nests. This new variabl
 HWRF model to be compiled with support for "multi-threaded" integration of multiple storms.
 When compiled in this mode, the model will integrate in parallel the different groups of nested
 domains corresponding to different storms, each storm being integrated by its own independent
-thread. For example, suppose that domains D02-D03 track storm 1 and that domains D04-D05 track
-storm 2. Under threaded integration, one thread will integrate domains D02-D03 sequentially while
-another thread will in parallel also integrate domains D04-D05 sequentially. This corresponds to
-the threaded/parallel integration of multiple storms.
+thread. For example, suppose that domains D02-D03 track Storm 1 and that domains D04-D05 track
+Storm 2. Under threaded integration, one thread will integrate domains D02-D03 sequentially while
+another thread will in parallel integrate domains D04-D05 sequentially. This corresponds to the
+threaded, or parallel, integration of multiple storms.
+
+Note: Threaded integration implies that the model code is thread-safe. In our approach, the
+computational portion of WRF's integration loop, namely, the SOLVE_NMM call tree, was made thread
+safe. This means that other components such as the halo exchanges, MPI calls, forcing, feedback,
+and IO routines remain just as non-thread-safe as the original HWRF. Thus, the threads integrating
+the different storms in parallel are forced to synchronize their access to each of these non-thread-safe
+model components by invoking 2 subroutines from the new module MODULE_SYNC_DOMAINS:
+WAIT_FOR_DOMAIN_PRIVILEGE and CYCLE_DOMAIN_PRIVILEGE. These 2 subroutines are invoked throughout
+the SOLVE_NMM call tree to synchronize access to MPI and MODUL_DM::WRF_DM_* routines.
 
 
 ---------------------------------------------------------------------------------------------------
-|  LIST OF MODEL MODIFICATIONS                                                                    |
+|         LIST OF MODEL MODIFICATIONS DONE TO MODEL IN ORDER TO SUPPORT THE NEW FEATURES          |
 ---------------------------------------------------------------------------------------------------
 
 Below is a list of both the previously existing source code files that were modified as well as the
-new source code files that were added to support the 2 new model integration modes.
+new source code files that were added to support the new model features described above:
 
-1)Existing source code files with significant code additions:
-frame/module_integrate.F
-dyn_nmm/solve_nmm.F
+1)Existing source code files with significant code additions (e.g. various calls to subroutines from
+the new MODULE_SYNC_DOMAINS found in frame/module_sync_domains.F, expansion of the recursive integration
+loop to perform nest forcing, parallel integration, and feedback in individual loops, etc...):
+a) frame/module_integrate.F             - Modifications made to support threaded multi-storm integration.
+b) dyn_nmm/solve_nmm.F                  - Modifications made to support multi-storm integration, for both
+                                          sequential and threaded integration modes.
 
-2)Existing source code files with minimal code additions:
-external/RSL_LITE/module_dm.F
-frame/module_domain_type.F
-dyn_nmm/BUCKETS.F
-dyn_nmm/module_HIFREQ.F
-dyn_nmm/module_ADVECTION.F
-dyn_nmm/module_IGWAVE_ADJUST.F
+2)Existing source code files with minimal code additions (e.g. a few calls to subroutines from the
+new MODULE_SYNC_DOMAINS found in frame/module_sync_domains.F, some additional code used to start
+MPI in threaded mode, etc...) :
+a) external/RSL_LITE/module_dm.F        - Added code to initialize MPI in threaded model when integrating
+                                          multiple storms using high resolution moving nests.
+b) frame/module_domain_type.F           - Added two new INTEGER variables that point to new MPI communicators.
+                                          These variables are currently unused, but should remain there for
+                                          possible future code upgrades.
+c) dyn_nmm/BUCKETS.F                    - Added modifier SAVE to variable FIRST_PASS.
+d) dyn_nmm/module_HIFREQ.F              - Synchronized around calls to MODULE_DM::WRF_DM_* routines (i.e. MPI
+                                          calls) using routines from the new frame/module_sync_domains.F.
+e) dyn_nmm/module_ADVECTION.F           - Synchronized around calls routines that invoke MPI-based routines
+                                          using routines from the new frame/module_sync_domains.F.
+f) dyn_nmm/module_IGWAVE_ADJUST.F       - Synchronized around calls routines that invoke MPI-based routines
+                                          using routines from the new frame/module_sync_domains.F.
 
 3)New source code files added to support threaded multi-storm integration:
-frame/pthread_integrate_domain.c
-frame/threaded_integration_driver.F
-frame/module_sync_domains.F
-frame/pthread_sync_domain.c
-frame/get_multistorm_mpi_mode.c
+a) frame/pthread_integrate_domain.c     - Invoked by MODULE_INTEGRATE::INTEGRATE() to spawns integration
+                                          threads for each storm. Invoked only from D01's integration loop.
+b) frame/threaded_integration_driver.F  - Invoked by the threads integrating each storm. This routine invokes
+                                          MODULE_INTEGRATE::INTEGRATE() to continue the recursive integration.
+c) frame/module_sync_domains.F          - Provides various routines that allows the integration threads to
+                                          synchronize their access to various model components (e.g. MPI, IO, etc).
+d) frame/pthread_sync_domain.c          - Used by frame/module_sync_domains.F, it provides access to the P-thread
+                                          library's synchronization routines needed for parallel integration.
+e) frame/get_multistorm_mpi_mode.c      - Determines whether MPI should be started in single or multi-threaded
+                                          mode when MPI_Init_thread is invoked by MODULE_DM::SPLIT_COMMUNICATOR()
+                                          when the model is compiled with multi-storm integration support. First,
+                                          it looks at the environmental variable WRF_NMM_MPI_MODE to determine
+                                          if the user specified one of the following modes: MPI_THREAD_SINGLE,
+                                          MPI_THREAD_FUNNELED, MPI_THREAD_SERIALIZED, or MPI_THREAD_MULTIPLE. If
+                                          the environmental variable is not found, then it will read the variables
+                                          max_dom and parent_id from the namelist.input file to determine how many
+                                          storms are being tracked by nested domains. If the model is either configured
+                                          as a D01-only run or to track a single storm with moving nests, then
+                                          MPI_THREAD_SINGLE is used, otherwise, MPI_THREAD_MULTIPLE is used. Note,
+                                          however, that the integration threads will sychronize around all MPI
+                                          calls made during runtime. Thus, MPI_THREAD_MULTIPLE is used when running
+                                          in threaded mode simply because it provides a more efficient serialized
+                                          access implementation than other MPI initiaization modes.
 
 
 ---------------------------------------------------------------------------------------------------
-|  COMPILING AND RUNNING THE HWRF MULTISTORM BASINSCALE MODEL                                     |
+|                   COMPILING AND RUNNING THE HWRF MULTISTORM BASINSCALE MODEL                    |
 ---------------------------------------------------------------------------------------------------
 
+The modified model was tested extensively in NOAA RDHPCS's Tjet, Ujet, and Sjet systems, and to a
+lesser extent in the Zeus system. Below are instructions needed to compile and test the model in
+the Tjet, Ujet, and Sjet systems using the Intel compiler and MVAPICH2 as the MPI stack in DMPAR
+mode. Further instructions will be added in the future as the model is tested more extensively in
+other NOAA RDHPCS systems.
 
+The 2 new environmental flags described above (HRD_MULTIPLE_STORMS and HRD_THREADED_INTEGRATION)
+are not part of the WRF build system and, thus, the new features do not appear in the list of build
+options provided by the "./configure" script. Consequently, after "./configure" is ran, the resulting
+configure.wrf file has to be modified in order to include the necessary flags and options needed
+to compile the new features. To include the new model features enabled by the HRD_MULTIPLE_STORMS
+environmental variable, only variable ENVCOMPDEFS inside configure.wrf has to be modified to include
+"-DHRD_MULTIPLE_STORMS=1". To include the new model features enabled by the HRD_THREADED_INTEGRATION
+environmental variable, then the variables ENVCOMPDEFS, FCFLAGS, and CFLAGS_LOCAL in configure.wrf
+must be modified to instruct the Intel compiler to use thread-safety options. A script was prepared
+to provide an example of how to compile the model with the new features enabled. The script is called
+"install_nmm_jet.scr". It automatically modifies the configure.wrf file before starting the compilation.
+By default, the script will automatically enable both the HRD_MULTIPLE_STORMS and HRD_THREADED_INTEGRATION
+flags, that is, the model will be compiled with support for threaded integration of multiple storms.
+To disable threaded integration and enable only sequential integration of storms, then the script
+must be modified by removing the entry -DHRD_THREADED_INTEGRATION=1 from the FCFLAGS and CFLAGS_LOCAL
+variables of configure.wrf. Running the script is very simple, and it will perform a clean install:
+
+>> ./install_nmm_jet.scr
+
+Running the model is very simple. The following path to a file residing in the Jets systems points to
+a TAR-GZ archive containing all of the files needed to test the model and its new features. The archive
+include a working version of the namelist.input file that is configured for 4 storms, or a total of 9
+domains. This is specified by the variable "max_dom=9", corresponding to the 27km resolution D01 domain
+plus 4 additional 09:03km nest-pairs (8 moving nests total) that each track a unique storm. In this
+example, the moving nests are initialized by simply downscaling from the 27km resolution parent domain.
+In addition, IO is essentially "turned-off" in the namelist by setting the history output time to a
+very large value (IO is performed only for forecast hour 0). To turn the IO on, simply set the output
+history time variable to a valid value for each domain:
+
+/lfs1/projects/hur-aoml/Thiago.Quirino/FOR_DTC/BASIN00L-2012083012.tgz    (1.1GB compressed archive)
+
+After compiling the model, simply copy the resulting "main/wrf.exe" executable into the directory that was
+extracted from the TAR-GZ archive and submit one of the 2 scripts described below to the batch system
+in order to start a forecast job. During the developmental stage, we tested the model using 288 compute
+tasks per storm and 16 IO tasks divided into 4 IO groups. Below is the script used to submit jobs to either
+Tjet/Ujet or Sjet. Recall to edit the scripts' headers to appropriately set the account name using the
+"#PBS -A" option:
+
+For Tjet/Ujet:
+a) Script name: test_wrf_tjet-ujet.ksh
+b) Submission command: qsub ./test_wrf_tjet-ujet.ksh
+
+For Sjet:
+a) Script name: test_wrf_sjet.ksh
+b) Submission command: qsub ./test_wrf_sjet.ksh
+
+Thread core affinity becomes an important issue when running in threaded integration mode with multiple storms.
+This mode will require MPI to be started with the MPI_THREAD_MULTIPLE mode by MODULE_DM::SPLIT_COMMUNICATOR().
+When using MVAPICH2 as the MPI stack, its internal thread core affinity interface must be disabled to allow
+the use of the MPI_THREAD_MULTIPLE mode. This is accomplished by setting "export MV2_ENABLE_AFFINITY=0" in the
+job script and passing it as an argument to the mpiexec call, as shown the the sample "test_wrf_tjet-ujet.ksh"
+script. Note that when running in Sjet, the mpiexec.hydra's own thread affinity interface is used to pin the
+integration threads spawned by the model to specific sets of CPUs within each node. Sjet is more sensitive
+than Tjet/Ujet to thread core affinity. It is always recommended that all of the threads belonging to a specific
+WRF task should all reside within the same CPU socket to avoid potential issues with cache misses, which quickly
+deteriotate model performance.
+
+Regarding the total number of nodes required to run a multi-storm simulation, that will vary depending whether
+sequential or threaded integration mode are being used. When sequential integration mode is used, the model
+will use the same set of compute cores to integrate all domains sequentially, thus each WRF task will require
+a single core in a node to perform the numerical integration. This means that as many WRF tasks can be spawned
+per node as the number of cores in a node. However, when threaded integration mode is used, each WRF task will
+require as many cores in a node as the number of storms being integrated. To efficiently run the model in this mode,
+the total number of threads spawned by all WRF tasks within a node must be less than or equal to the number of cores
+in each node. Thus, for example, when integrating 4 storms in the 12 core nodes of the Tjet/Ujet systems, a max of 3
+WRF tasks should be started per node (3 tasks * 4 storms = 12 threads = 12 cores). Another example would be to
+integrate 2 storms in the 16 core nodes of the Sjet system, where a max of 8 WRF tasks should be started per node
+(8 tasks * 2 storms = 16 threads = 16 cores). The number of WRF tasks started per node is controlled by the QSUB option
+"-l nodes=XXX:ppn=YYY", where "XXX" is the total number of nodes requested to be dedicated for the MPI job and "YYY"
+is the number of WRF tasks to be spawned in each node. The value of "XXX*YYY" is the total number of WRF tasks to be
+spawned. If the total number of integration threads within a node (e.g., number of storms * number of WRF tasks per node)
+is greater than the total number of cores in the node, then the integration threads will be competing for CPU time,
+which will quickly deteriotate the model performance.
+
+Finally, to vary the number of storms integrated using the example above, simply change the value of variable
+"max_dom" in the namelist.input file. For example, "max_dom=1" corresponds to a D01-only run. A value of "max_dom=5"
+corresponds to 2 storms (D01 plus 2 high-resolution nest-pairs), and a value of "max_dom=7" corresponds to 3 storms
+(D01 plus 3 high-resolution nest-pairs), etc...
