@@ -227,7 +227,7 @@ MODULE MODULE_SYNC_DOMAINS
 
 
     !This function returns the ID (from "1" to "totalDomainsInSimulation") of the domain currently having the privilege to perform synchronized tasks
-    INTEGER FUNCTION GET_DOMAIN_WITH_PRIVILEGE
+    INTEGER FUNCTION GET_DOMAIN_WITH_PRIVILEGE()
         IMPLICIT NONE
         !!$OMP CRITICAL (module_sync_domains_give_privilege)
         GET_DOMAIN_WITH_PRIVILEGE = currDomainWithPrivilege
@@ -236,7 +236,7 @@ MODULE MODULE_SYNC_DOMAINS
 
 
     !This function returns the nesting level (0, 1, or 2) whose domains currently have the privilege to perform synchronized tasks
-    INTEGER FUNCTION GET_NEST_LEVEL_WITH_PRIVILEGE
+    INTEGER FUNCTION GET_NEST_LEVEL_WITH_PRIVILEGE()
         IMPLICIT NONE
         !!$OMP CRITICAL (module_sync_domains_give_privilege)
         GET_NEST_LEVEL_WITH_PRIVILEGE = currNestingLevelWithPrivilege
@@ -245,21 +245,21 @@ MODULE MODULE_SYNC_DOMAINS
 
 
     !This function returns the simulation nesting level (0 for single-domain, 1 for double-nested, or 2 for triple-nested) in the simulation
-    INTEGER FUNCTION GET_MAX_SIMULATION_NEST_LEVEL
+    INTEGER FUNCTION GET_MAX_SIMULATION_NEST_LEVEL()
         IMPLICIT NONE
         GET_MAX_SIMULATION_NEST_LEVEL = maxSimulationNestingLevel
     END FUNCTION
 
 
     !This function returns the number of storms in the simulation that are being tracked by high-resolution nests
-    INTEGER FUNCTION GET_TOTAL_STORMS_IN_SIMULATION
+    INTEGER FUNCTION GET_TOTAL_STORMS_IN_SIMULATION()
         IMPLICIT NONE
         GET_TOTAL_STORMS_IN_SIMULATION = totalStormsInSimulation
     END FUNCTION
 
 
     !This function returns whether debug information should be displayed for the parallel integration
-    LOGICAL FUNCTION IS_INTEGRATION_VERBOSE
+    LOGICAL FUNCTION IS_INTEGRATION_VERBOSE()
         IMPLICIT NONE
         IS_INTEGRATION_VERBOSE = isIntegrationVerbose
     END FUNCTION
