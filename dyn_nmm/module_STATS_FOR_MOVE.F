@@ -45,8 +45,8 @@ contains
     
 #ifdef HWRF
     vortex_tracker=grid%vortex_tracker
-    if(vortex_tracker<1 .or. vortex_tracker>6) then
-       write(message,*)' domain ',grid%id,' has an invalid value ',vortex_tracker,' for vortex_tracker.  It must be 1, 2, 3, 4 or 5.'
+    if(vortex_tracker<1 .or. vortex_tracker>7) then
+       write(message,*)' domain ',grid%id,' has an invalid value ',vortex_tracker,' for vortex_tracker.  It must be an integer from 1-7.'
        call wrf_error_fatal(message)
     endif
 
@@ -109,7 +109,7 @@ contains
 #endif
 
 #ifdef HWRF
-    if(init .and. vortex_tracker==6) then
+    if(init .and. (vortex_tracker==6 .or. vortex_tracker==7) ) then
        call ncep_tracker_init(grid)
     endif
 #endif
@@ -215,6 +215,12 @@ contains
     !       noise removal.  Plus, it only searches within X km of the nest
     !       center to avoid other nearby systems.
     !   vortex_tracker=5 -- track average of parent and grandparent PDYN
+    !   vortex_tracker=6 -- simplified version of Tim Marchok's tracker
+    !
+    !   vortex_tracker=7 -- nearly the full storm tracking algorithm
+    !       from Tim Marchok's tracker.  The only part that is missing
+    !       is the part that gives up when the storm dissipates.  That
+    !       is left out intentionally.
     !
     ! HISTORY:
     !   2004?       - initial implementation by gopal
@@ -223,6 +229,8 @@ contains
     !   late  2010  - sam added a new child tracker (vortex_tracker=2)
     !   Nov 08 2011 - sam split implementation into several functions and
     !                 added the vortex_tracker=4 option
+    !   Mar 2013    - sam added options 5 & 6
+    !   Sep 2013    - sam added option 7
 #ifdef HWRF
     USE module_tracker, only: ncep_tracker_center
 #endif
@@ -320,7 +328,7 @@ contains
             ,ITS,ITE,JTS,JTE,KTS,KTE)
        RETURN
 #ifdef HWRF
-    elseif(vortex_tracker==6) then
+    elseif(vortex_tracker==6 .or. vortex_tracker==7) then
        ! Tracker #6: do whatever the inline NCEP Tracker says
        call ncep_tracker_center(grid)
        call vt6_move(grid%tracker_ifix,grid%tracker_jfix,  &

@@ -62,7 +62,9 @@ contains
     grid%track_n_old=0
     grid%track_old_lon=0
     grid%track_old_lat=0
+    grid%track_old_ntsd=0
 
+    grid%tracker_angle=0
     grid%tracker_fixlon=-999.0
     grid%tracker_fixlat=-999.0
     grid%tracker_ifix=-99
@@ -72,6 +74,10 @@ contains
     grid%tracker_pmin=-99999.
     grid%tracker_vmax=-99.
     grid%tracker_rmw=-99.
+
+    grid%track_have_guess=.false.
+    grid%track_guess_lat=-999.0
+    grid%track_guess_lon=-999.0
   end subroutine ncep_tracker_init
 
   subroutine ncep_tracker_center(grid)
@@ -104,6 +110,9 @@ contains
        IDS,IDE,JDS,JDE,KDS,KDE, &
        IMS,IME,JMS,JME,KMS,KME, &
        IPS,IPE,JPS,JPE,KPS,KPE)
+    ! This is the main entry point to the tracker.  It is most similar
+    ! to the function "tracker" in the GFDL/NCEP vortex tracker.
+
     USE MODULE_DOMAIN, ONLY : domain,get_ijk_from_grid
 #ifdef DM_PARALLEL
     use module_dm, only: wrf_dm_sum_real
@@ -134,6 +143,8 @@ contains
     real :: rcen(maxtp) ! center value (max wind, min mslp, etc.)
 
     logical :: north_hemi ! true = northern hemisphere
+    logical :: have_guess ! first guess is available
+    real :: guessdist,guessdeg ! first guess distance to nearest point on grid
 
     ! icen,jcen: Same meaning as clon, clat in tracker, but uses i and
     ! j indexes of the center instead of lat/lon.  Tracker comment:
@@ -164,16 +175,64 @@ contains
     calcparm=.false.
     srsq=searchrad*searchrad*1e6
 
-    ! Hard coded first-guess center is domain center:
-    iguess=ide/2
-    jguess=jde/2
-    call get_lonlat(grid,iguess,jguess,longuess,latguess,ierr, &
-         ids,ide, jds,jde, kds,kde, &
-         ims,ime, jms,jme, kms,kme, &
-         ips,ipe, jps,jpe, kps,kpe)
-    if(ierr/=0) then
-       call wrf_error_fatal("ERROR: center of domain is not inside the domain")
+    ! Get the first guess from the prior nest motion timestep:
+    have_guess=grid%track_have_guess
+    if(have_guess) then
+       ! We have a first guess center.  We have to translate it to gridpoint space.
+       longuess=grid%track_guess_lon
+       latguess=grid%track_guess_lat
+       call get_nearest_lonlat(grid,iguess,jguess,ierr,longuess,latguess, &
+            ids,ide, jds,jde, kds,kde, &
+            ims,ime, jms,jme, kms,kme, &
+            ips,ipe, jps,jpe, kps,kpe)
+       if(ierr==0) then
+          call calcdist(latguess,longuess,&
+               grid%hlon(iguess,jguess),grid%hlat(iguess,jguess), &
+               guessdist,guessdeg)
+          if(guessdist*1e3>3*grid%dy) then
+108          format('WARNING: guess lon=',F0.3,',lat=',F0.3, &
+                  ' too far (',F0.3,'km) from nearest point lon=',F0.3,',lat=',F0.3, &
+                  '.  Will use domain center as first guess.')
+             write(message,108) grid%guess_lon,grid%guess_lat,guessdist,&
+                  grid%hlon(iguess,jguess),grid%hlat(iguess,jguess)
+             call wrf_message(message)
+             have_guess=.false. ! indicate that the first guess is unusable
+          else
+             latguess=grid%hlat(iguess,jguess)
+             longuess=grid%hlon(iguess,jguess)
+          endif
+       else
+          have_guess=.false. ! indicate that the first guess is unusable.
+109       format('WARNING: guess lon=',F0.3,',lat=',F0.3, &
+                  ' does not exist in this domain.  Will use domain center as first guess.')
+          write(message,109) grid%guess_lon,grid%guess_lat
+          call wrf_message(message)
+       endif
+   endif
+
+   ! If we could not get the first guess from the prior nest motion
+   ! timestep, then use the default first guess: the domain center.
+    if(grid%vortex_tracker==6 .or. .not.have_guess) then
+       ! vt=6: hard coded first-guess center is domain center:
+       ! vt=7: first guess comes from prior timestep
+       !     Initial first guess is domain center.
+       !     Backup first guess is domain center if first guess is unusable.
+       iguess=ide/2
+       jguess=jde/2
+       call get_lonlat(grid,iguess,jguess,longuess,latguess,ierr, &
+            ids,ide, jds,jde, kds,kde, &
+            ims,ime, jms,jme, kms,kme, &
+            ips,ipe, jps,jpe, kps,kpe)
+       if(ierr/=0) then
+          call wrf_error_fatal("ERROR: center of domain is not inside the domain")
+       endif
+       have_guess=.true.
     endif
+
+    if(.not.have_guess) then
+       call wrf_error_fatal("INTERNAL ERROR: No first guess is available (should never happen).")
+    endif
+
     north_hemi = latguess>0.0
 
     ! Get the mean V-to-H point-to-point distance:
@@ -319,15 +378,25 @@ contains
     endif
 #endif
 
-    call get_first_ges(grid,iguess,jguess,latguess,longuess, &
+    if(grid%vortex_tracker==7) then
+       call get_first_ges(grid,iguess,jguess,latguess,longuess, &
+            IDS,IDE,JDS,JDE,KDS,KDE, &
+            IMS,IME,JMS,JME,KMS,KME, &
+            IPS,IPE,JPS,JPE,KPS,KPE)
+       
+       call store_old_fixes(grid, &
             IDS,IDE,JDS,JDE,KDS,KDE, &
             IMS,IME,JMS,JME,KMS,KME, &
             IPS,IPE,JPS,JPE,KPS,KPE)
 
-    call store_old_fixes(grid, &
-            IDS,IDE,JDS,JDE,KDS,KDE, &
-            IMS,IME,JMS,JME,KMS,KME, &
-            IPS,IPE,JPS,JPE,KPS,KPE)
+       ! Store the first guess:
+       grid%track_have_guess=.true.
+       grid%track_guess_lat=latguess
+       grid%track_guess_lon=longuess
+3011   format('First guess: lon=',F0.3,' lat=',F0.3)
+       write(message,3011) grid%guess_lon,grid%guess_lat
+       call wrf_debug(1,message)
+    endif
 
   end subroutine ntc_impl
 
@@ -336,6 +405,20 @@ contains
          IDS,IDE,JDS,JDE,KDS,KDE, &
          IMS,IME,JMS,JME,KMS,KME, &
          IPS,IPE,JPS,JPE,KPS,KPE)
+    ! This replicates the functionality of the tracker get_first_ges
+    ! routine, whose purpose is to analyze the storm and guess where
+    ! it will be at the next nest motion timestep.  It does that using
+    ! two different methods, similar to the GFDL/NCEP Tracker's
+    ! methods:
+    !
+    !  1. Use the present, and past few, fix locations and extrapolate
+    !  to the next location.
+    !  
+    !  2. Calculate the mean motion and extrapolate to get the
+    !  location at the next nest motion timestep.
+    !
+    ! The average of the two results is used.
+
 #ifdef DM_PARALLEL
     use module_dm, only: wrf_dm_maxval_real
 #endif
@@ -532,6 +615,8 @@ contains
          IDS,IDE,JDS,JDE,KDS,KDE, &
          IMS,IME,JMS,JME,KMS,KME, &
          IPS,IPE,JPS,JPE,KPS,KPE)
+    ! This stores old fix locations for later use in the get_first_ges
+    ! routine's line of best fit.
     USE MODULE_DOMAIN, ONLY : domain,get_ijk_from_grid
     implicit none
     type(domain), intent(inout) :: grid
@@ -587,8 +672,8 @@ contains
                ids,ide, jds,jde, kds,kde, &
                ims,ime, jms,jme, kms,kme, &
                ips,ipe, jps,jpe, kps,kpe)
-    ! This outputs to a format that can be easily converted to ATCF,
-    ! using units used by ATCF.
+    ! Finds the nearest point in the domain to the specified lon,lat
+    ! location.
 #ifdef DM_PARALLEL
     use module_dm, only: wrf_dm_maxval_real,wrf_dm_minval_real
 #endif
@@ -666,6 +751,7 @@ contains
        IDS,IDE,JDS,JDE,KDS,KDE, &
        IMS,IME,JMS,JME,KMS,KME, &
        ITS,ITE,JTS,JTE,KTS,KTE)
+    ! This determines the maximum wind, RMW and minimum mslp in the domain.
     USE MODULE_DOMAIN, ONLY : domain,get_ijk_from_grid
 #ifdef DM_PARALLEL
     use module_dm, only: wrf_dm_maxval_real,wrf_dm_minval_real
@@ -763,6 +849,9 @@ contains
        ids,ide, jds,jde, kds,kde, &
        ims,ime, jms,jme, kms,kme, &
        its,ite, jts,jte, kts,kte)
+    ! This calculates the mean motion of the storm by calculating the
+    ! average wind vector at 850, 700 and 500 mbars.
+
 #ifdef DM_PARALLEL
     use module_dm, only: wrf_dm_sum_real8, wrf_dm_sum_integer
 #endif
@@ -819,7 +908,8 @@ contains
        ids,ide, jds,jde, kds,kde, &
        ims,ime, jms,jme, kms,kme, &
        ips,ipe, jps,jpe, kps,kpe)
-    ! This is the same as "fixcenter" in gettrk_main
+    ! This is the same as "fixcenter" in gettrk_main.  Original comment:
+    !
     ! ABSTRACT: This subroutine loops through the different parameters
     !           for the input storm number (ist) and calculates the 
     !           center position of the storm by taking an average of
@@ -1395,8 +1485,11 @@ contains
          ITS,ITE,JTS,JTE,KTS,KTE)
     ! This computes approximate distances in km from the tracker
     ! center of the various points in the domain.  It uses the same
-    ! computation as used for distsq.  The calculation is done in
+    ! computation as used for distsq: the calculation is done in
     ! gridpoint space, approximating the domain as flat.
+    ! Point-to-point distances come from grid%dx_nmm and grid%dy_nmm.
+    ! This routine also determines the distance from the tracker
+    ! center location to the nearest point in the domain edge.
 #ifdef DM_PARALLEL
     use module_dm, only: wrf_dm_minval_real
 #endif
@@ -1445,11 +1538,15 @@ contains
     ! lat/lon.  (Geographic East=0, geographic North=pi/2.)
     xlon1=clonr ; ylat1=clatr
     call clean_lon_lat(xlon1,ylat1)
+    xlon1=xlon1*pi180
+    ylat1=ylat1*pi180
     do j=jts,min(jte,jde-1)
        do i=its,min(ite,ide-1)
           xlon2=grid%glon(i,j)
           ylat2=grid%glat(i,j)
           call clean_lon_lat(xlon2,ylat2)
+          xlon2=xlon2*pi180
+          ylat2=ylat2*pi180
           grid%tracker_angle(i,j)=atan2(xlon2-xlon1,ylat2-ylat1)
        enddo
     enddo
@@ -1483,9 +1580,12 @@ contains
     call wrf_message(message)
   end subroutine get_tracker_distsq
 
-  subroutine clean_lon_lat(ylat1,xlon1)
-    real, intent(inout) :: ylat1,xlon1
-    
+  subroutine clean_lon_lat(xlon1,ylat1)
+    real, intent(inout) :: xlon1,ylat1
+    ! This modifies a (lat,lon) pair so that the longitude fits
+    ! between [-180,180] and the latitude between [-90,90], taking
+    ! into account spherical geometry.
+    ! NOTE: inputs and outputs are in degrees
     xlon1=(mod(xlon1+3600.+180.,360.)-180.)
     ylat1=(mod(ylat1+3600.+180.,360.)-180.)
     if(ylat1>90.) then
@@ -1495,8 +1595,6 @@ contains
        ylat1=-180. - ylat1
        xlon1=mod(xlon1+360.,360.)-180.
     endif
-    xlon1=xlon1*pi180
-    ylat1=ylat1*pi180
   end subroutine clean_lon_lat
 
   subroutine calcdist(rlonb,rlatb,rlonc,rlatc,xdist,degrees)
