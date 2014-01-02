@@ -292,24 +292,45 @@ contains
          IPS,IPE,JPS,JPE,KPS,KPE)
 
     ! Find wind minima.  Requires a first guess center:
-    call find_center(grid,grid%p850wind,grid%sp850wind,srsq, &
-         icen(3),jcen(3),rcen(3),calcparm(3),loncen(3),latcen(3),dxdymean,'wind', &
-         IDS,IDE,JDS,JDE,KDS,KDE, &
-         IMS,IME,JMS,JME,KMS,KME, &
-         IPS,IPE,JPS,JPE,KPS,KPE, &
-         iuvguess=iuvguess, juvguess=juvguess)
-    call find_center(grid,grid%p700wind,grid%sp700wind,srsq, &
-         icen(5),jcen(5),rcen(5),calcparm(5),loncen(5),latcen(5),dxdymean,'wind', &
-         IDS,IDE,JDS,JDE,KDS,KDE, &
-         IMS,IME,JMS,JME,KMS,KME, &
-         IPS,IPE,JPS,JPE,KPS,KPE, &
-         iuvguess=iuvguess, juvguess=juvguess)
-    call find_center(grid,grid%m10wind,grid%sm10wind,srsq, &
-         icen(10),jcen(10),rcen(10),calcparm(10),loncen(10),latcen(10),dxdymean,'wind', &
-         IDS,IDE,JDS,JDE,KDS,KDE, &
-         IMS,IME,JMS,JME,KMS,KME, &
-         IPS,IPE,JPS,JPE,KPS,KPE, &
-         iuvguess=iuvguess, juvguess=juvguess)
+    windmin: if(grid%vortex_tracker==6) then
+       call find_center(grid,grid%p850wind,grid%sp850wind,srsq, &
+            icen(3),jcen(3),rcen(3),calcparm(3),loncen(3),latcen(3),dxdymean,'wind', &
+            IDS,IDE,JDS,JDE,KDS,KDE, &
+            IMS,IME,JMS,JME,KMS,KME, &
+            IPS,IPE,JPS,JPE,KPS,KPE, &
+            iuvguess=iuvguess, juvguess=juvguess)
+       call find_center(grid,grid%p700wind,grid%sp700wind,srsq, &
+            icen(5),jcen(5),rcen(5),calcparm(5),loncen(5),latcen(5),dxdymean,'wind', &
+            IDS,IDE,JDS,JDE,KDS,KDE, &
+            IMS,IME,JMS,JME,KMS,KME, &
+            IPS,IPE,JPS,JPE,KPS,KPE, &
+            iuvguess=iuvguess, juvguess=juvguess)
+       call find_center(grid,grid%m10wind,grid%sm10wind,srsq, &
+            icen(10),jcen(10),rcen(10),calcparm(10),loncen(10),latcen(10),dxdymean,'wind', &
+            IDS,IDE,JDS,JDE,KDS,KDE, &
+            IMS,IME,JMS,JME,KMS,KME, &
+            IPS,IPE,JPS,JPE,KPS,KPE, &
+            iuvguess=iuvguess, juvguess=juvguess)
+    else
+       call get_uv_center(grid,grid%p850wind, &
+            icen(3),jcen(3),rcen(3),calcparm(3),loncen(3),latcen(3),dxdymean,'wind', &
+            IDS,IDE,JDS,JDE,KDS,KDE, &
+            IMS,IME,JMS,JME,KMS,KME, &
+            IPS,IPE,JPS,JPE,KPS,KPE, &
+            iuvguess=iuvguess, juvguess=juvguess)
+       call get_uv_center(grid,grid%p700wind, &
+            icen(5),jcen(5),rcen(5),calcparm(5),loncen(5),latcen(5),dxdymean,'wind', &
+            IDS,IDE,JDS,JDE,KDS,KDE, &
+            IMS,IME,JMS,JME,KMS,KME, &
+            IPS,IPE,JPS,JPE,KPS,KPE, &
+            iuvguess=iuvguess, juvguess=juvguess)
+       call get_uv_center(grid,grid%m10wind, &
+            icen(10),jcen(10),rcen(10),calcparm(10),loncen(10),latcen(10),dxdymean,'wind', &
+            IDS,IDE,JDS,JDE,KDS,KDE, &
+            IMS,IME,JMS,JME,KMS,KME, &
+            IPS,IPE,JPS,JPE,KPS,KPE, &
+            iuvguess=iuvguess, juvguess=juvguess)
+    endif windmin
 
     ! Get a final guess center location:
     call fixcenter(grid,icen,jcen,calcparm,loncen,latcen, &
@@ -1283,6 +1304,94 @@ contains
     jout=nint(real(jsum)/real(ict))
   end subroutine get_uv_guess
 
+  subroutine get_uv_center(grid,orig, &
+       iout,jout,rout,calcparm,lonout,latout, &
+       dxdymean,cparm, &
+       IDS,IDE,JDS,JDE,KDS,KDE, &
+       IMS,IME,JMS,JME,KMS,KME, &
+       IPS,IPE,JPS,JPE,KPS,KPE, &
+       iuvguess,juvguess) 
+
+    use module_wrf_error
+#ifdef DM_PARALLEL
+    use module_dm, only: wrf_dm_minval_real, wrf_dm_maxval_real, wrf_dm_sum_real
+#endif
+    USE MODULE_DOMAIN, ONLY : domain,get_ijk_from_grid
+    use module_relax
+    implicit none
+
+    integer, intent(in) :: iuvguess,juvguess
+    type(domain), intent(inout) :: grid
+    character*(*), intent(in) :: cparm
+    real, intent(in) :: dxdymean
+    real, intent(inout) :: rout
+    integer, intent(inout) :: iout,jout
+    logical, intent(inout) :: calcparm
+    real, intent(inout) :: latout,lonout
+    real, intent(in) :: orig(ims:ime,jms:jme)
+
+    integer, intent(in) :: IDS,IDE,JDS,JDE,KDS,KDE
+    integer, intent(in) :: IMS,IME,JMS,JME,KMS,KME
+    integer, intent(in) :: IPS,IPE,JPS,JPE,KPS,KPE
+
+    integer :: icen,jcen, i,j, istart,istop, jstart,jstop, ierr
+    real :: rcen, srsq
+
+    ! Restrict the search area.  By default, we search everywhere except the boundary:
+    istart=max(ids+1,ips)
+    istop=min(ide-2,ipe)
+    jstart=max(jds+2,jps)
+    jstop=min(jde-3,jpe)
+
+    ! If the guess location is given, then further restrict the search area:
+    istart=max(istart,iuvguess-nint(rads_vmag/(2.*dxdymean)))
+    istop=min(istop,iuvguess+nint(rads_vmag/(2.*dxdymean)))
+    jstart=max(jstart,juvguess-nint(rads_vmag/(2.*dxdymean)))
+    jstop=min(jstop,juvguess+nint(rads_vmag/(2.*dxdymean)))
+    
+    srsq=rads_vmag*rads_vmag*1e6
+
+    icen=-99
+    jcen=-99
+    rcen=9e9
+    do j=jstart,jstop
+       do i=istart,istop
+          if(orig(i,j)<rcen .and. grid%distsq(i,j)<srsq) then
+             rcen=orig(i,j)
+             icen=i
+             jcen=j
+          endif
+       enddo
+    enddo
+
+#ifdef DM_PARALLEL
+       call wrf_dm_minval_real(rcen,icen,jcen)
+       write(0,*) 'global',icen,jcen,rcen
+#endif
+
+    ! Return result:
+    resultif: if(icen==-99 .or. jcen==-99) then
+       ! No center found.
+       calcparm=.false.
+       write(0,*) 'no center found'
+    else
+       iout=icen
+       jout=jcen
+       rout=rcen
+       calcparm=.true.
+       call get_lonlat(grid,iout,jout,lonout,latout,ierr, &
+            ids,ide, jds,jde, kds,kde, &
+            ims,ime, jms,jme, kms,kme, &
+            ips,ipe, jps,jpe, kps,kpe) 
+       if(ierr/=0) then
+          write(0,*) 'bad lonlat'
+          calcparm=.false.
+          return
+       endif
+       write(0,*) 'center found; lon=',lonout,' lat=',latout
+    endif resultif
+  end subroutine get_uv_center
+
   subroutine find_center(grid,orig,smooth,srsq, &
        iout,jout,rout,calcparm,lonout,latout, &
        dxdymean,cparm, &
@@ -1397,16 +1506,16 @@ contains
          IDS,IDE,JDS,JDE,KDS,KDE, &
          IMS,IME,JMS,JME,KMS,KME, &
          IPS,IPE,JPS,JPE,KPS,KPE)
-
+    
     ! Copy the smoothed data back in:
     do j=jps,min(jde-1,jpe)
        do i=ips,min(ide-1,ipe)
           smooth(i,j)=grid%relaxwork(i,j)
        enddo
     enddo
-
+       
     ! Figure out whether we're finding a min or max:
-    if(trim(cparm)=='zeta') then
+    ifmin: if(trim(cparm)=='zeta') then
        if(.not.present(north_hemi)) then
           call wrf_error_fatal('When calling module_tracker find_center for zeta, you must specify the hemisphere parameter.')
        endif
@@ -1421,7 +1530,7 @@ contains
 100    format('Invalid parameter cparm="',A,'" in module_tracker find_center')
        !write(message,100) trim(cparm)
        call wrf_error_fatal(message)
-    endif
+    endif ifmin
 
 3011 format('ips=',I0,' ipe=',I0,' istart=',I0,' istop=',I0)
 3012 format('jps=',I0,' jpe=',I0,' jstart=',I0,' jstop=',I0)
@@ -1431,7 +1540,7 @@ contains
     ! Find the extremum:
     icen=-99
     jcen=-99
-    if(findmin) then ! Find a minimum
+    findminmax: if(findmin) then ! Find a minimum
        rcen=9e9
        do j=jstart,jstop
           do i=istart,istop
@@ -1465,10 +1574,10 @@ contains
        call wrf_dm_maxval_real(rcen,icen,jcen)
        !write(0,3014) 'global',icen,jcen,rcen
 #endif
-    endif
+    endif findminmax
 
     ! Return result:
-    if(icen==-99 .or. jcen==-99) then
+    resultif: if(icen==-99 .or. jcen==-99) then
        ! No center found.
        calcparm=.false.
        !write(0,*) 'no center found'
@@ -1487,7 +1596,7 @@ contains
           return
        endif
        !write(0,*) 'center found; lon=',lonout,' lat=',latout
-    endif
+    endif resultif
   end subroutine find_center
 
   subroutine get_tracker_distsq(grid, &
