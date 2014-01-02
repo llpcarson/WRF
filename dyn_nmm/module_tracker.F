@@ -141,10 +141,11 @@ contains
     logical :: calcparm(maxtp) ! do we have a valid center location for this parameter?
     real :: max_wind,min_pres ! for ATCF output
     real :: rcen(maxtp) ! center value (max wind, min mslp, etc.)
-
+    character*255 :: message
     logical :: north_hemi ! true = northern hemisphere
     logical :: have_guess ! first guess is available
     real :: guessdist,guessdeg ! first guess distance to nearest point on grid
+    real :: latnear, lonnear ! nearest point in grid to first guess
 
     ! icen,jcen: Same meaning as clon, clat in tracker, but uses i and
     ! j indexes of the center instead of lat/lon.  Tracker comment:
@@ -184,28 +185,26 @@ contains
        call get_nearest_lonlat(grid,iguess,jguess,ierr,longuess,latguess, &
             ids,ide, jds,jde, kds,kde, &
             ims,ime, jms,jme, kms,kme, &
-            ips,ipe, jps,jpe, kps,kpe)
+            ips,ipe, jps,jpe, kps,kpe,     lonnear, latnear)
        if(ierr==0) then
-          call calcdist(latguess,longuess,&
-               grid%hlon(iguess,jguess),grid%hlat(iguess,jguess), &
-               guessdist,guessdeg)
+          call calcdist(longuess,latguess, lonnear,latnear, guessdist,guessdeg)
           if(guessdist*1e3>3*grid%dy) then
 108          format('WARNING: guess lon=',F0.3,',lat=',F0.3, &
                   ' too far (',F0.3,'km) from nearest point lon=',F0.3,',lat=',F0.3, &
                   '.  Will use domain center as first guess.')
-             write(message,108) grid%guess_lon,grid%guess_lat,guessdist,&
-                  grid%hlon(iguess,jguess),grid%hlat(iguess,jguess)
+             write(message,108) grid%track_guess_lon,grid%track_guess_lat, &
+                  guessdist,lonnear,latnear
              call wrf_message(message)
              have_guess=.false. ! indicate that the first guess is unusable
           else
-             latguess=grid%hlat(iguess,jguess)
-             longuess=grid%hlon(iguess,jguess)
+             latguess=latnear
+             longuess=lonnear
           endif
        else
           have_guess=.false. ! indicate that the first guess is unusable.
 109       format('WARNING: guess lon=',F0.3,',lat=',F0.3, &
                   ' does not exist in this domain.  Will use domain center as first guess.')
-          write(message,109) grid%guess_lon,grid%guess_lat
+          write(message,109) grid%track_guess_lon,grid%track_guess_lat
           call wrf_message(message)
        endif
    endif
@@ -219,6 +218,9 @@ contains
        !     Backup first guess is domain center if first guess is unusable.
        iguess=ide/2
        jguess=jde/2
+       if(grid%vortex_tracker==7) then
+          call wrf_message('Using domain center as first guess since no valid first guess is available.')
+       endif
        call get_lonlat(grid,iguess,jguess,longuess,latguess,ierr, &
             ids,ide, jds,jde, kds,kde, &
             ims,ime, jms,jme, kms,kme, &
@@ -379,7 +381,7 @@ contains
 #endif
 
     if(grid%vortex_tracker==7) then
-       call get_first_ges(grid,iguess,jguess,latguess,longuess, &
+       call get_first_ges(grid,iguess,jguess,longuess,latguess, &
             IDS,IDE,JDS,JDE,KDS,KDE, &
             IMS,IME,JMS,JME,KMS,KME, &
             IPS,IPE,JPS,JPE,KPS,KPE)
@@ -394,7 +396,7 @@ contains
        grid%track_guess_lat=latguess
        grid%track_guess_lon=longuess
 3011   format('First guess: lon=',F0.3,' lat=',F0.3)
-       write(message,3011) grid%guess_lon,grid%guess_lat
+       write(message,3011) grid%track_guess_lon,grid%track_guess_lat
        call wrf_debug(1,message)
     endif
 
@@ -671,11 +673,12 @@ contains
   subroutine get_nearest_lonlat(grid,iloc,jloc,ierr,lon,lat, &
                ids,ide, jds,jde, kds,kde, &
                ims,ime, jms,jme, kms,kme, &
-               ips,ipe, jps,jpe, kps,kpe)
+               ips,ipe, jps,jpe, kps,kpe, &
+               lonnear, latnear)
     ! Finds the nearest point in the domain to the specified lon,lat
     ! location.
 #ifdef DM_PARALLEL
-    use module_dm, only: wrf_dm_maxval_real,wrf_dm_minval_real
+    use module_dm, only: wrf_dm_minloc_real
 #endif
     USE MODULE_DOMAIN, ONLY : domain,get_ijk_from_grid
     implicit none
@@ -685,12 +688,16 @@ contains
     integer, intent(in) :: IPS,IPE,JPS,JPE,KPS,KPE
     integer, intent(out) :: iloc,jloc,ierr
     real, intent(in) :: lon,lat
-    real :: dx,dy,d,dmin
+    real :: dx,dy,d,dmin, zdummy, latmin,lonmin
     integer :: i,j,imin,jmin
+    real, intent(out), optional :: latnear, lonnear
 
+    zdummy=42
     dmin=9e9
     imin=-99
     jmin=-99
+    latmin=9e9
+    lonmin=9e9
     ierr=0
     do j=jps,min(jde-1,jpe)
        do i=ips,min(ide-1,ipe)
@@ -701,18 +708,22 @@ contains
              dmin=d
              imin=i
              jmin=j
+             latmin=grid%hlat(i,j)
+             lonmin=grid%hlon(i,j)
           endif
        enddo
     enddo
 
 #ifdef DM_PARALLEL
-    call wrf_dm_minval_real(dmin,imin,jmin)
+    call wrf_dm_minloc_real(dmin,latmin,lonmin,zdummy,imin,jmin)
 #endif
     if(imin<0 .or. jmin<0) then
        ierr=-99
     else
        iloc=imin ; jloc=jmin
     endif
+    if(present(latnear)) latnear=latmin
+    if(present(lonnear)) lonnear=lonmin
   end subroutine get_nearest_lonlat
 
   subroutine output_partial_atcfunix(grid, &

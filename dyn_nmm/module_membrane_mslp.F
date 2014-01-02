@@ -292,7 +292,8 @@ contains
 
     real :: Pmass(ips:ipe,jps:jpe,kds:kde)
     real :: numsum,densum,modelP1,modelP2,pdiff,presQ,presT,ZL,QSAT, U1, V1, U2, V2, dudy1,dvdx1, dudy2,dvdx2
-
+    character*255 :: message
+    
     ! ks: k in source (model level) array
     ! kd: k in destination (pressure level) array
     ground_level=0
@@ -392,12 +393,18 @@ contains
       end do iTQ2
    end do
 
-   ifwind: if(size(grid%p700rv)>1) then
+1234 format('grid ',I0,': size(',A,') = ',I0)
+   write(message,1234) grid%id,'grid%p700rv',size(grid%p700rv)
+   call wrf_message(trim(message))
+   write(message,1234) grid%id,'grid%p700u',size(grid%p700u)
+   call wrf_message(trim(message))
+
+   ifwind: if(size(grid%p700rv)>1 .or. size(grid%p700u)>1) then
     ! Interpolate wind to H points on pressure levels, calculating
     ! horizontal wind vector magnitude and vertical component of
     ! vorticity.  Interpolate only to 700 and 850 mbar, except for U &
     ! V which are also interpolated to 500mbar.
-    windloop: do k=0,1,2
+    windloop: do k=0,2
        if(k==0) then
           ! Only need wind components at 500 mbar
           kd=k500
@@ -510,6 +517,8 @@ contains
          grid%m10rv(i,j) = dvdx1 - dudy1
       enddo
    enddo
+  elseif(grid%id==3) then
+     call wrf_error_fatal('ERROR: NOT INTERPOLATING WIND')
   endif ifwind
 
     do j=jps,min(jde-1,jpe)
