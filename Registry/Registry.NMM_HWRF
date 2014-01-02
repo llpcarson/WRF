@@ -206,8 +206,8 @@ state  real   VBWGT4       ij     dyn_nmm     1      -      r
 #
 state  real   HLON        ij     dyn_nmm     1      -      h01
 state  real   HLAT        ij     dyn_nmm     1      -      h01
-state  real   VLON        ij     dyn_nmm     1      -      irh
-state  real   VLAT        ij     dyn_nmm     1      -      irh
+state  real   VLON        ij     dyn_nmm     1      -      irh02
+state  real   VLAT        ij     dyn_nmm     1      -      irh02
 
 state integer hifreq_lun   -     dyn_nmm     0      -      -
 state integer outatcf_lun  -     dyn_nmm     0      -      -
@@ -869,8 +869,8 @@ state    real   PSFC             ij     misc        1         -     i1rh       "
 state    real   dtbc            -       misc     -         -      ir       "dtbc"                 "TIME SINCE BOUNDARY READ"         ""
 state    real   TH2              ij     misc        1         -     irh       "TH2"                  "POT TEMP at 2 M" ""
 state    real   T2               ij     misc        1         -     ir        "T2"                  "TEMP at 2 M" ""
-state    real   U10              ij     misc        1         -     irh01d=(DownCopy)       "U10"                  "U at 10 M"         " "
-state    real   V10              ij     misc        1         -     irh01d=(DownCopy)       "V10"                  "V at 10 M"         " "
+state    real   U10              ij     misc        1         -     irh012d=(DownCopy)       "U10"                  "U at 10 M"         " "
+state    real   V10              ij     misc        1         -     irh012d=(DownCopy)       "V10"                  "V at 10 M"         " "
 state    real   XICE             ij     misc        1         -     i01rd=(DownNear)      "XICE"                 "SEA ICE"         ""
 state    real   ICEDEPTH         ij     misc        1         -     i0124rhd=(interp_hnear_nmm:IIH,JJH,HBWGT1,HBWGT2,HBWGT3,HBWGT4)   "ICEDEPTH"        "SEA ICE THICKNESS"    "m"
 state    real   ALBSI            ij     misc        1         -     i0124rhd=(interp_hnear_nmm:IIH,JJH,HBWGT1,HBWGT2,HBWGT3,HBWGT4)   "ALBSI"        "SEA ICE ALBEDO"    " "
@@ -899,7 +899,7 @@ state    real   CANWAT           ij     misc        1         -     i01rh       
 state  integer  FORCE_SST        k      misc        1         -     -        "FORCE_SST"          "IF FORCE_SST(1) IS 1, FEED SST FROM PARENT EVERY DT" ""
 state    real   SST              ij     misc        1         -     i014rh02d=(DownNear)f=(force_sst_nmm:IIH,JJH,HBWGT1,HBWGT2,HBWGT3,HBWGT4,FORCE_SST)       "SST"                  "SEA SURFACE TEMPERATURE" "K"
 state    real   WEASD            ij     misc        1         -     i01rhd=(DownNear)       "WEASD"                "WATER EQUIVALENT OF ACCUMULATED SNOW" "kg m-2"
-state    real  ZNT              ij      misc        1         -     irh        "ZNT"                   "TIME-VARYING ROUGHNESS LENGTH"
+state    real  ZNT              ij      misc        1         -     irh02        "ZNT"                   "TIME-VARYING ROUGHNESS LENGTH"
 state    real  MOL              ij      misc        1         -     ir        "MOL"                   "T* IN SIMILARITY THEORY"                      "K"
 state    real  NOAHRES          ij      misc        1         -     rh        "NOAHRES"               "RESIDUAL OF THE NOAH SURFACE ENERGY BUDGET" "W m{-2}"
 
