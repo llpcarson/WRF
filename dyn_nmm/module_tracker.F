@@ -446,6 +446,7 @@ contains
     use module_dm, only: wrf_dm_maxval_real
 #endif
     USE MODULE_DOMAIN, ONLY : domain,get_ijk_from_grid
+    use module_wrf_error, only: wrf_at_debug_level
     implicit none
     type(domain), intent(inout) :: grid
     integer, intent(in) :: IDS,IDE,JDS,JDE,KDS,KDE
@@ -513,7 +514,7 @@ contains
        ! This last step should not be necessary but done just in case:
        have_motion_guess = .not.(iguess<ide/4 .or. iguess>ide*3/4 .or. jguess<jde/4 .or. jguess>jde*3/4)
 
-       print *,'got have_motion_guess=',have_motion_guess
+       !print *,'got have_motion_guess=',have_motion_guess
     endif
 
     if(.not.have_motion_guess) then
@@ -521,11 +522,11 @@ contains
        ! next first guess location.
        iguess=ide/2
        jguess=jde/2
-       print *,'cannot find storm, so using domain center for motion guess'
+       !print *,'cannot find storm, so using domain center for motion guess'
     endif
 
     if(grid%track_n_old>0) then
-       print *,'line guess: have old'
+       !print *,'line guess: have old'
        n=1
        call to_rot45_grid(grid%tracker_ifix,grid%tracker_jfix,jde,xrot,yrot)
        xsum=xrot
@@ -544,7 +545,7 @@ contains
                ims,ime, jms,jme, kms,kme, &
                ips,ipe, jps,jpe, kps,kpe)
           if(ierr==0) then
-             print *,'insert: i=',iold,' j=',jold,' lon=',grid%track_old_lon(i),' lat=',grid%track_old_lat(i),' t=',grid%track_old_ntsd(i)
+             !print *,'insert: i=',iold,' j=',jold,' lon=',grid%track_old_lon(i),' lat=',grid%track_old_lat(i),' t=',grid%track_old_ntsd(i)
              call to_rot45_grid(iold,jold,jde,xrot,yrot)
              n=n+1
              xsum=xsum+xrot
@@ -558,7 +559,7 @@ contains
              ttsum=ttsum+told*told
           endif
        enddo
-       print *,'line guess: n=',n
+       !print *,'line guess: n=',n
 
        if(n>1) then
           ntsd_plus_1 = grid%ntsd + grid%movemin*grid%nphs
@@ -566,11 +567,11 @@ contains
           my=(ytsum-(ysum*tsum)/real(n))/(ttsum-(tsum*tsum)/real(n))
           bx=(xsum-mx*tsum)/real(n)
           by=(ysum-my*tsum)/real(n)
-          print *,'mx=',mx,' my=',my,' bx=',bx,' by=',by,' t+1=',ntsd_plus_1
+          !print *,'mx=',mx,' my=',my,' bx=',bx,' by=',by,' t+1=',ntsd_plus_1
           xrot=nint(mx*ntsd_plus_1+bx)
           yrot=nint(my*ntsd_plus_1+by)
           call from_rot45_grid(inew,jnew,jde,xrot,yrot)
-          print *,'inew=',inew,' jnew=',jnew,' xrot=',xrot,' yrot=',yrot
+          !print *,'inew=',inew,' jnew=',jnew,' xrot=',xrot,' yrot=',yrot
           have_line_guess=.not.(inew<ide/4 .or. inew>ide*3/4 &
                .or. jnew<jde/4 .or. jnew>jde*3/4)
        else
@@ -578,46 +579,58 @@ contains
        endif
     endif
 
-    ! FIXME: DELETE THIS SECTION
-    call get_lonlat(grid,iguess,jguess,longuess,latguess,ierr, &
-         ids,ide, jds,jde, kds,kde, &
-         ims,ime, jms,jme, kms,kme, &
-         ips,ipe, jps,jpe, kps,kpe)
-    if(ierr==0) then
-       if(have_motion_guess) then
-          print *,'Motion guess: lon=',longuess,' lat=',latguess
-       else
-          print *,'Domain center: lon=',longuess,' lat=',latguess
-       endif
-    else
-       print *,'Motion/domain guess: ierr=',ierr
-    endif
-    if(have_line_guess) then
-       call get_lonlat(grid,inew,jnew,longuess,latguess,ierr, &
+    print_locs: if(wrf_at_debug_level(2)) then
+       call get_lonlat(grid,iguess,jguess,longuess,latguess,ierr, &
             ids,ide, jds,jde, kds,kde, &
             ims,ime, jms,jme, kms,kme, &
             ips,ipe, jps,jpe, kps,kpe)
        if(ierr==0) then
-          print *,'Line guess: lon=',longuess,' lat=',latguess
+          if(have_motion_guess) then
+3088         format('Motion Guess: lon=',F0.3,' lat=',F0.3)
+             write(message,3088) longuess,latguess
+             call wrf_debug(2,message)
+          else
+3089         format('Motion Guess failed; use domain center: lon=',F0.3,' lat=',F0.3)
+             write(message,3089) longuess,latguess
+             call wrf_debug(2,message)
+          endif
        else
-          print *,'Line guess: ierr=',ierr
+3090      format('Motion guess ierr=',I0)
+          write(message,3090) ierr
+          call wrf_debug(2,message)
        endif
-    endif
-    ! FIXME: END OF SECTION TO DELETE
+       if(have_line_guess) then
+          call get_lonlat(grid,inew,jnew,longuess,latguess,ierr, &
+               ids,ide, jds,jde, kds,kde, &
+               ims,ime, jms,jme, kms,kme, &
+               ips,ipe, jps,jpe, kps,kpe)
+          if(ierr==0) then
+3091         format('Line guess: lon=',F0.3,' lat=',F0.3)
+             write(message,3091) longuess,latguess
+             call wrf_debug(2,message)
+          else
+3092         format('Line guess ierr=',I0)
+             write(message,3092) ierr
+             call wrf_debug(2,message)
+          endif
+       endif
+    endif print_locs
 
-    print *,'have_motion_guess=',have_motion_guess
-    print *,'have_line_guess=',have_line_guess
     if(have_line_guess) then
        if(have_motion_guess) then
+          call wrf_debug(1,'get_first_ges: have MOTION and LINE guesses')
           iguess=(iguess+inew)/2
           jguess=(jguess+jnew)/2
        else
+          call wrf_debug(1,'get_first_ges: have LINE guess only')
           iguess=inew
           jguess=jnew
        endif
+    elseif(have_motion_guess) then
+       call wrf_debug(1,'get_first_ges: have MOTION guess only')
+    else
+       call wrf_debug(1,'get_first_ges: have no guesses; will use domain center')
     endif
-
-    print *,'final guess: i=',iguess,' j=',jguess
 
     ! Now get lats & lons:
     call get_lonlat(grid,iguess,jguess,longuess,latguess,ierr, &
@@ -626,10 +639,10 @@ contains
          ips,ipe, jps,jpe, kps,kpe)
     if(ierr/=0) then
        ! Should never get here due to max/min check before.
-       call wrf_error_fatal("ERROR: domain is not inside the domain")
+       call wrf_error_fatal("ERROR: domain is not inside the domain in get_first_ges (!?)")
     endif
 
-38  format('Guess: i=',I0,' j=',I0,' lat=',F8.3,' lon=',F8.3)
+38  format('First guess: i=',I0,' j=',I0,' lat=',F8.3,' lon=',F8.3)
     write(message,38) iguess,jguess,latguess,longuess
     call wrf_message(message)
   end subroutine get_first_ges
@@ -1366,14 +1379,14 @@ contains
 
 #ifdef DM_PARALLEL
        call wrf_dm_minval_real(rcen,icen,jcen)
-       write(0,*) 'global',icen,jcen,rcen
+       !write(0,*) 'global',icen,jcen,rcen
 #endif
 
     ! Return result:
     resultif: if(icen==-99 .or. jcen==-99) then
        ! No center found.
        calcparm=.false.
-       write(0,*) 'no center found'
+       !write(0,*) 'no center found'
     else
        iout=icen
        jout=jcen
@@ -1384,11 +1397,11 @@ contains
             ims,ime, jms,jme, kms,kme, &
             ips,ipe, jps,jpe, kps,kpe) 
        if(ierr/=0) then
-          write(0,*) 'bad lonlat'
+          !write(0,*) 'bad lonlat'
           calcparm=.false.
           return
        endif
-       write(0,*) 'center found; lon=',lonout,' lat=',latout
+       !write(0,*) 'center found; lon=',lonout,' lat=',latout
     endif resultif
   end subroutine get_uv_center
 
