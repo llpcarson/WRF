@@ -201,6 +201,8 @@ state  real   HLAT        ij     dyn_nmm     1      -      h01d=(test_nmm:IIH,JJ
 state  real   VLON        ij     dyn_nmm     1      -      irh
 state  real   VLAT        ij     dyn_nmm     1      -      irh
 
+include registry.tornado
+
 #
 rconfig  real wbd0    derived   max_domains    0       - "wbd0"                  "western boundary of the domain"
 rconfig  real sbd0    derived   max_domains    0       - "sbd0"                  "southern boundary of the domain"
@@ -1668,7 +1670,7 @@ halo HALO_NMM_MEMBRANE_MASK dyn_nmm 8:relaximask
 halo HALO_NMM_TRACK dyn_nmm 120:sm,pdyn,mslp,sqws
 halo HALO_NMM_INTERP_DOWN1 dyn_nmm 24:sm,fis,t,u,v,q,q2,pd,albase,nmm_tsk,mxsnal,tg,islope,cmc,soiltb,vegfrc,sh2o,smc,stc,toposoil,xice,ivgtyp,isltyp,vegfra,sst,weasd,snowh,hlat,hlon,z0,landmask,cwm,ustar,ths,qsh,cldefi,pshltr,dwdt,acprec,thz0,qz0,uz0,vz0,htop,hbot,cuppt,rlwtt,rswtt,t_adj,f_ice,f_rain,f_rimef,pint,hres_fis
 halo HALO_NMM_INTERP_DOWN1M dyn_nmm 24:MOIST,SCALAR
-halo HALO_NMM_FORCE_DOWN1 dyn_nmm 24:t,u,v,q,q2,cwm,pint,pd,hres_fis,fis
+halo HALO_NMM_FORCE_DOWN1 dyn_nmm 24:t,u,v,q,q2,cwm,pint,pd,hres_fis,fis,tg_max_m10wind,tg_max_vwind,tg_min_vwind,tg_max_zhel_25,tg_min_zhel_25,tg_max_zhel_03,tg_min_zhel_03,tg_total_precip
 halo HALO_NMM_FORCE_DOWN1M dyn_nmm 24:MOIST,SCALAR
 halo HALO_NMM_WEIGHTS dyn_nmm 48:IIH,JJH,HBWGT1,HBWGT2,HBWGT3,HBWGT4,IIV,JJV,VBWGT1,VBWGT2,VBWGT3,VBWGT4,HNEAR_I,HNEAR_J
 

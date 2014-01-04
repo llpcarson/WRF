@@ -27,6 +27,7 @@ MODULES =                 		\
         module_IGWAVE_ADJUST.o          \
 	module_membrane_mslp.o		\
 	module_tracker.o		\
+	module_tornado_genesis.o	\
 	module_relax.o			\
 	$(CASE_MODULE)
 

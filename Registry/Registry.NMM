@@ -163,6 +163,8 @@ state integer randstate4     ij     dyn_nmm     1      -    r  "randstate4" "ran
 state real    random         ij     dyn_nmm     1      -    rh "random" "random number in [0,1) used by SAS"
 rconfig   integer random_seed             namelist,physics     max_domains    0       irh    "random_seed"  "random number generator seed"
 
+include registry.tornado
+
 #
 # module_MASKS
 #

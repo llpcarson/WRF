@@ -1624,6 +1624,11 @@ SUBROUTINE med_hist_out ( grid , stream, config_flags )
      CALL end_timing ( TRIM(message) )
    END IF
 
+#if (NMM_CORE == 1)
+   ! Reset tornado genesis fields after output:
+   call nmm_reset_tornado_genesis(grid,config_flags,stream)
+#endif
+
    RETURN
 END SUBROUTINE med_hist_out
 
@@ -2004,7 +2009,6 @@ SUBROUTINE open_hist_w ( grid , config_flags, stream, alarm_id, &
    USE module_configure	, ONLY : grid_config_rec_type
 !   USE module_bc_time_utilities
    USE module_utility
-
    IMPLICIT NONE
   ! Arguments
    TYPE(domain)                                :: grid
@@ -2066,6 +2070,7 @@ SUBROUTINE open_hist_w ( grid , config_flags, stream, alarm_id, &
        TRIM ( fname ), ierr
      CALL wrf_message( message )
    ENDIF
+
    RETURN
 END SUBROUTINE open_hist_w
 

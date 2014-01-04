@@ -29,6 +29,7 @@
 #ifdef HWRF
       USE MODULE_HIFREQ,                ONLY: HIFREQ_WRITE, HIFREQ_OPEN
 #endif
+      USE MODULE_TORNADO_GENESIS,       ONLY: CALC_TORNADO_GENESIS
       USE MODULE_IGWAVE_ADJUST,         ONLY: PDTE,PFDHT,DDAMP,VTOA
       USE MODULE_ADVECTION,             ONLY: ADVE,VAD2,HAD2            &
                                              ,ADV2,MONO                 &
@@ -2466,12 +2467,13 @@
 
 !--------------------------------------------------------------------------------------------------------------
 !
-!      HIGH FREQUENCY OUTPUT    (STORM CENTER, MIN MSLP, MAX WINDS)
-!          FOR NEST DOMAIN (9KM)        KWON 2011.4, TRAHAN 2011.6
+!      HIGH FREQUENCY OUTPUT    (STORM CENTER, MIN MSLP, MAX WINDS, TG products)
+!          FOR NEST DOMAIN (9KM)        KWON 2011.4, TRAHAN 2011.6, 2014.1
 !
 !--------------------------------------------------------------------------------------------------------------
 !
 #ifdef HWRF
+     CALL CALC_TORNADO_GENESIS(GRID,CONFIG_FLAGS)
      IF(grid%hifreq_lun /= 0) THEN
         CALL HIFREQ_WRITE(grid%hifreq_lun,GRID%NTSD,GRID%DT,GRID%HLAT,GRID%HLON    &
                       ,GRID%U10,GRID%V10,grid%pint,grid%t,grid%q                   &

@@ -1,3 +1,4 @@
+#define NEST_FULL_INFLUENCE(A,B) A=B
 MODULE module_dm
 
    USE module_machine
@@ -4480,7 +4481,7 @@ END
                             ipe_save, jpe_save, ips_save, jps_save, get_dm_max_halo_width
 #if (NMM_NEST == 1)
       USE module_comm_dm, ONLY : HALO_NMM_FORCE_DOWN1_sub, HALO_NMM_FORCE_DOWN1M_sub, &
-           HALO_NMM_FORCE_DOWN_SST_sub, HALO_NMM_INTERP_INFO_sub
+           HALO_NMM_FORCE_DOWN_SST_sub, HALO_NMM_INTERP_INFO_sub, HALO_NMM_TORNADO_sub
 #endif
       IMPLICIT NONE
 !
@@ -4550,6 +4551,9 @@ integer myproc
 #include "HALO_NMM_FORCE_DOWN1.inc"
       if(interp_mp .eqv. .true.) then
 #include "HALO_NMM_FORCE_DOWN1M.inc"
+      endif
+      if(size(grid%tg_max_m10wind)>1) then
+#include "HALO_NMM_TORNADO.inc"
       endif
 
       call store_interp_info(ngrid,grid)
@@ -4682,7 +4686,7 @@ grid=>cgrid
                             ipe_save, jpe_save, ips_save, jps_save, get_dm_max_halo_width
 #if ( NMM_NEST == 1 )
       USE module_comm_dm, ONLY : HALO_NMM_FORCE_DOWN1_sub, HALO_NMM_FORCE_DOWN1M_sub, &
-           HALO_NMM_INTERP_INFO_sub,HALO_NMM_FORCE_DOWN_SST_sub
+           HALO_NMM_INTERP_INFO_sub,HALO_NMM_FORCE_DOWN_SST_sub, HALO_NMM_TORNADO_sub
 #endif
       IMPLICIT NONE
 !
@@ -4745,6 +4749,9 @@ integer myproc
 #include "HALO_NMM_FORCE_DOWN1.inc"
 if(interp_mp .eqv. .true.) then
 #include "HALO_NMM_FORCE_DOWN1M.inc"
+endif
+if(size(grid%tg_max_m10wind)>1) then
+#include "HALO_NMM_TORNADO.inc"
 endif
 
       RETURN

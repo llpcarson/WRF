@@ -2248,7 +2248,7 @@
 !
       REAL,DIMENSION(:,:,:,:),ALLOCATABLE :: MOIST_TRANS
 !
-      LOGICAL :: RESTART,WARM_RAIN,ETAMP_Regional
+      LOGICAL :: RESTART,WARM_RAIN,ETAMP_Regional, have_tg_tp
       LOGICAL,DIMENSION(IMS:IME,JMS:JME) :: CU_ACT_FLAG
 !
       CHARACTER(LEN=255) :: message
@@ -2645,6 +2645,8 @@
 !
 !-----------------------------------------------------------------------
 !
+
+      have_tg_tp = (size(grid%tg_total_precip)>1)
 !$omp parallel do                                                       &
 !$omp& private(i,iendx,j,ncubot,ncutop,pcpcol)
       pcp_cloud: DO J=MYJS2,MYJE2
@@ -2660,6 +2662,9 @@
           CUPREC(I,J)=CUPREC(I,J)+PCPCOL
           CUPPT(I,J)=CUPPT(I,J)+PCPCOL
           CPRATE(I,J)=PCPCOL
+          if(have_tg_tp) then
+             grid%tg_total_precip(i,j) = grid%tg_total_precip(i,j) + PCPCOL
+          endif
 !
 !***  SAVE CLOUD TOP AND BOTTOM FOR RADIATION (HTOP/HBOT) AND
 !***  FOR OUTPUT (CNVTOP/CNVBOT, HTOPS/HBOTS, HTOPD/HBOTD) ARRAYS.
@@ -2885,7 +2890,7 @@
       REAL,DIMENSION(:,:,:,:),ALLOCATABLE :: MOIST_TRANS
       REAL,DIMENSION(:,:,:,:),ALLOCATABLE :: SCALAR_TRANS
 !
-      LOGICAL :: E_BDY,F_QT,QT_PRESENT,WARM_RAIN
+      LOGICAL :: E_BDY,F_QT,QT_PRESENT,WARM_RAIN, have_tg_tp
 !
 !-----------------------------------------------------------------------
 !***********************************************************************
@@ -3090,6 +3095,7 @@
 !
 !$omp parallel do                                                       &
 !$omp& private(i,iendx,j,pcpcol)
+      have_tg_tp = (size(grid%tg_total_precip)>1)
       DO J=MYJS2,MYJE2
         IENDX=MYIE1
         IF(E_BDY.AND.MOD(J,2)==0)IENDX=IENDX-1
@@ -3097,6 +3103,9 @@
           PCPCOL=RAINNCV(I,J)*1.E-3
           PREC(I,J)=PREC(I,J)+PCPCOL
           ACPREC(I,J)=ACPREC(I,J)+PCPCOL
+          if(have_tg_tp) then
+             grid%tg_total_precip(i,j) = grid%tg_total_precip(i,j) + PCPCOL
+          endif
         ENDDO
       ENDDO
 !

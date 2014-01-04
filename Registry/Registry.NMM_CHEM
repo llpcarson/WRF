@@ -166,6 +166,8 @@ state  real   HLAT        ij     dyn_nmm     1      -      d=(test_nmm:IIH,JJH,H
 state  real   VLON        ij     dyn_nmm     1      -      irh
 state  real   VLAT        ij     dyn_nmm     1      -      irh
 
+include registry.tornado
+
 #
 rconfig  real wbd0    derived   max_domains    0       - "wbd0"                  "western boundary of the domain"
 rconfig  real sbd0    derived   max_domains    0       - "sbd0"                  "southern boundary of the domain"

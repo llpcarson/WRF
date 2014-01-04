@@ -82,6 +82,21 @@
     +                          N(ni,nj-2,k)                               \
   ) / 9
 
+! Maximum value from N array to C array:
+#define N2I_SET_MAX(C,N,i,j,k,ni,nj) \
+  C(i,j,k)=max(C(i,j,k),   max(N(ni,nj+2,k),                              \
+  max(N(ni-1,nj  ,k),      max(N(ni,nj  ,k),        max(N(ni+1,nj  ,k),   \
+              max(N(ni-a  ,nj-1,k),      max(N(ni+1-a,nj-1,k),            \
+                               N(ni,nj-2,k) )))))))                       \
+
+! Maximum value from N array to C array:
+#define N2I_SET_MAX_IJ(C,N,i,j,ni,nj) \
+  C(i,j)=max(C(i,j),          max(N(ni,nj+2),                           \
+       max(N(ni-1,nj  ),      max(N(ni,nj  ),        max(N(ni+1,nj  ),  \
+               max(N(ni-a  ,nj-1),      max(N(ni+1-a,nj-1),             \
+                               N(ni,nj-2) )))))))                       \
+       
+
 module module_interp_nmm
   use module_model_constants, only: g, R_D, p608
   implicit none
@@ -92,7 +107,7 @@ module module_interp_nmm
   public :: nmm_interp_pd, nmm_keep_pd, nmm_method_linear
 
   public :: c2b_fulldom, c2n_fulldom, n2c_fulldom
-
+  public :: n2c_max2d, n2c_max3d
   public :: c2b_mass, c2n_mass, n2c_mass
   public :: c2n_massikj, n2c_massikj
   public :: c2b_copy3d, c2n_copy3d, n2c_copy3d
@@ -618,6 +633,50 @@ contains
     enddo bigj 
  end subroutine n2c_copy2d
 
+  subroutine n2c_max2d (&
+       cfield,nfield,ipos,jpos,  &
+       cids, cide, cjds, cjde,   &
+       cims, cime, cjms, cjme,   &
+       cits, cite, cjts, cjte,   &
+       nids, nide, njds, njde,   &
+       nims, nime, njms, njme,   &
+       nits, nite, njts, njte, &
+       hgrid)
+    implicit none
+    integer, intent(in) :: &
+         cids, cide, cjds, cjde,   &
+         cims, cime, cjms, cjme,   &
+         cits, cite, cjts, cjte,   &
+         nids, nide, njds, njde,   &
+         nims, nime, njms, njme,   &
+         nits, nite, njts, njte,   &
+         ipos,jpos
+    real, intent(out) :: cfield(cims:cime,cjms:cjme)
+    real, intent(in) :: nfield(nims:nime,njms:njme)
+    logical, intent(in) :: hgrid
+
+    integer, parameter :: nri=3, nrj=3 ! parent:nest ratio, must be 3 in NMM
+    integer :: nz,jstart,jend,istart,iend,ni,nj,a,i,j
+
+    jstart=MAX(jpos+1,cjts)
+    jend=MIN(jpos+(njde-njds)/nrj-1,cjte)
+
+    bigj: do j=jstart,jend
+          a=mod(j,2)
+          if(.not.hgrid) then
+             a=1-a
+          endif
+       istart=MAX(ipos+a,cits)
+       iend=MIN(ipos+(nide-nids)/nri-1,cite)
+       nj = (j-jpos)*nrj + 1
+
+       iloop: do i=istart,iend
+          ni = (i-ipos)*nri + 2 - a
+          N2I_SET_MAX_IJ(cfield,nfield,i,j,ni,nj)
+       enddo iloop
+    enddo bigj 
+  end subroutine n2c_max2d
+
     subroutine c2n_copy2d (II,JJ,W1,W2,W3,W4,    &
        cfield,nfield,imask,     &
        cims, cime, cjms, cjme,   &
@@ -836,6 +895,57 @@ contains
        enddo iloop
     enddo bigj
   end subroutine n2c_copy3d
+
+  subroutine n2c_max3d (&
+       cfield,nfield,ipos,jpos,  &
+       cids, cide, cjds, cjde, ckds, ckde,   &
+       cims, cime, cjms, cjme, ckms, ckme,   &
+       cits, cite, cjts, cjte, ckts, ckte,   &
+       nids, nide, njds, njde, nkds, nkde,   &
+       nims, nime, njms, njme, nkms, nkme,   &
+       nits, nite, njts, njte, nkts, nkte,   &
+       hgrid)
+    implicit none
+    logical, intent(in) :: hgrid
+    integer, intent(in) :: &
+         cids, cide, cjds, cjde, ckds, ckde,   &
+         cims, cime, cjms, cjme, ckms, ckme,   &
+         cits, cite, cjts, cjte, ckts, ckte,   &
+         nids, nide, njds, njde, nkds, nkde,   &
+         nims, nime, njms, njme, nkms, nkme,   &
+         nits, nite, njts, njte, nkts, nkte,   &
+         ipos,jpos
+    real, intent(out) :: cfield(cims:cime,cjms:cjme,ckms:ckme)
+    real, intent(in) :: nfield(nims:nime,njms:njme,nkms:nkme)
+
+    integer, parameter :: nri=3, nrj=3 ! parent:nest ratio, must be 3 in NMM
+    integer :: nx,nz,jstart,jend,istart,iend,ni,nj,a,i,j,k,nk
+    real :: weight
+
+    nx=min(nide-2,nite)-max(nids+1,nits)+1
+    nz=nkde-nkds+1
+
+    jstart=MAX(jpos+1,cjts)
+    jend=MIN(jpos+(njde-njds)/nrj-1,cjte)
+
+    bigj: do j=jstart,jend
+       if(hgrid) then
+          a=mod(j,2)
+       else
+          a=1-mod(j,2)
+       endif
+       istart=MAX(ipos+a,cits)
+       iend=MIN(ipos+(nide-nids)/nri-1,cite)
+       nj = (j-jpos)*nrj + 1
+
+       iloop: do i=istart,iend
+          do k=nkds,nkde
+             ni = (i-ipos)*nri + 2 - a
+             N2I_SET_MAX(cfield,nfield,i,j,k,ni,nj)
+          enddo
+       enddo iloop
+    enddo bigj
+  end subroutine n2c_max3d
 
   subroutine c2n_copy3d (II,JJ,W1,W2,W3,W4,    &
        cfield,nfield,imask,      &

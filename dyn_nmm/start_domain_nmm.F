@@ -101,6 +101,7 @@
    USE MODULE_GOCART_AEROSOLS, ONLY: SUM_PM_GOCART
    USE MODULE_MOSAIC_DRIVER, ONLY: SUM_PM_MOSAIC
 #endif
+   USE module_tornado_genesis, only: init_tornado_genesis
 
 !
 !----------------------------------------------------------------------
@@ -627,6 +628,13 @@
       endif
 ! end of high-freq output
 #endif
+
+! Begin Sam Trahan's doing for Tornado Genesis (SPC) products
+      if(anal .or. (allowed_to_read .and. .not. restrt)) then
+         call init_tornado_genesis(grid,config_flags)
+      endif
+! End Sam Trahan's doing for Tornado Genesis (SPC) products
+
 #ifdef HWRF
 ! Begin Sam Trahan's doing for vortex tracker initialization
     IF ( program_name(1:8) .NE. "REAL_NMM" ) THEN
