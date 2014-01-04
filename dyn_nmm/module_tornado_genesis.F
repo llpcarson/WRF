@@ -161,7 +161,7 @@ contains
     integer :: IDS,IDE,JDS,JDE,KDS,KDE
     integer :: IMS,IME,JMS,JME,KMS,KME
     integer :: IPS,IPE,JPS,JPE,KPS,KPE
-    integer :: i,j,k, istart,iend, jstart,jend, a
+    integer :: i,j,k, istart,iend, jstart,jend, a, imin,imax
     real :: dudy, dvdx, w, zhel, maxmaxwind, minminw, maxmaxw, sec
     real :: height, height1, height2, height0, maxmaxzhel, minminzhel
     character*255 :: message
@@ -179,6 +179,8 @@ contains
     jend=min(jpe,jde-2)
     istart=max(ips,ids+1)
     iend=min(ipe,ide-2)
+    imin=max(ips,ids)
+    imax=min(ipe,ide-1)
 
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_C.inc"
@@ -261,6 +263,7 @@ contains
     call wrf_dm_minval_real(minminzhel,i,j)
 #endif
 
+    ! I boundaries copy from nearest point that has data, excluding corner points:
     if(ips<=ids) then
        grid%tg_max_zhel_25(ids,jstart:jend)=grid%tg_max_zhel_25(ids+1,jstart:jend)
        grid%tg_max_zhel_03(ids,jstart:jend)=grid%tg_max_zhel_03(ids+1,jstart:jend)
@@ -271,34 +274,36 @@ contains
        grid%tg_max_m10wind(ids,jstart:jend)=grid%tg_max_m10wind(ids+1,jstart:jend)
     endif
 
-    if(ipe>=ide-1) then
-       grid%tg_max_zhel_25(ide-2,jstart:jend)=grid%tg_max_zhel_25(ide-1,jstart:jend)
-       grid%tg_max_zhel_03(ide-2,jstart:jend)=grid%tg_max_zhel_03(ide-1,jstart:jend)
-       grid%tg_min_zhel_25(ide-2,jstart:jend)=grid%tg_min_zhel_25(ide-1,jstart:jend)
-       grid%tg_min_zhel_03(ide-2,jstart:jend)=grid%tg_min_zhel_03(ide-1,jstart:jend)
-       grid%tg_max_wwind(ide-2,jstart:jend)=grid%tg_max_wwind(ide-1,jstart:jend)
-       grid%tg_max_wwind(ide-2,jstart:jend)=grid%tg_max_wwind(ide-1,jstart:jend)
-       grid%tg_max_m10wind(ide-2,jstart:jend)=grid%tg_max_m10wind(ide-1,jstart:jend)
+    if(ipe>=ide-2) then
+       grid%tg_max_zhel_25(ide-1,jstart:jend)=grid%tg_max_zhel_25(ide-2,jstart:jend)
+       grid%tg_max_zhel_03(ide-1,jstart:jend)=grid%tg_max_zhel_03(ide-2,jstart:jend)
+       grid%tg_min_zhel_25(ide-1,jstart:jend)=grid%tg_min_zhel_25(ide-2,jstart:jend)
+       grid%tg_min_zhel_03(ide-1,jstart:jend)=grid%tg_min_zhel_03(ide-2,jstart:jend)
+       grid%tg_max_wwind(ide-1,jstart:jend)=grid%tg_max_wwind(ide-2,jstart:jend)
+       grid%tg_max_wwind(ide-1,jstart:jend)=grid%tg_max_wwind(ide-2,jstart:jend)
+       grid%tg_max_m10wind(ide-1,jstart:jend)=grid%tg_max_m10wind(ide-2,jstart:jend)
     endif
 
+    ! J boundaries: copy from nearest point that has data.  We use
+    ! imin:imax instead of istart:iend to get the corner points.
     if(jps<=jds) then
-       grid%tg_max_zhel_25(istart:iend,jds)=grid%tg_max_zhel_25(istart:iend,jds+1)
-       grid%tg_max_zhel_03(istart:iend,jds)=grid%tg_max_zhel_03(istart:iend,jds+1)
-       grid%tg_min_zhel_25(istart:iend,jds)=grid%tg_min_zhel_25(istart:iend,jds+1)
-       grid%tg_min_zhel_03(istart:iend,jds)=grid%tg_min_zhel_03(istart:iend,jds+1)
-       grid%tg_max_wwind(istart:iend,jds)=grid%tg_max_wwind(istart:iend,jds+1)
-       grid%tg_max_wwind(istart:iend,jds)=grid%tg_max_wwind(istart:iend,jds+1)
-       grid%tg_max_m10wind(istart:iend,jds)=grid%tg_max_m10wind(istart:iend,jds+1)
+       grid%tg_max_zhel_25(imin:imax,jds)=grid%tg_max_zhel_25(imin:imax,jds+1)
+       grid%tg_max_zhel_03(imin:imax,jds)=grid%tg_max_zhel_03(imin:imax,jds+1)
+       grid%tg_min_zhel_25(imin:imax,jds)=grid%tg_min_zhel_25(imin:imax,jds+1)
+       grid%tg_min_zhel_03(imin:imax,jds)=grid%tg_min_zhel_03(imin:imax,jds+1)
+       grid%tg_max_wwind(imin:imax,jds)=grid%tg_max_wwind(imin:imax,jds+1)
+       grid%tg_max_wwind(imin:imax,jds)=grid%tg_max_wwind(imin:imax,jds+1)
+       grid%tg_max_m10wind(imin:imax,jds)=grid%tg_max_m10wind(imin:imax,jds+1)
     endif
 
-    if(jpe>=jde-1) then
-       grid%tg_max_zhel_25(istart:iend,jde-2)=grid%tg_max_zhel_25(istart:iend,jde-1)
-       grid%tg_max_zhel_03(istart:iend,jde-2)=grid%tg_max_zhel_03(istart:iend,jde-1)
-       grid%tg_min_zhel_25(istart:iend,jde-2)=grid%tg_min_zhel_25(istart:iend,jde-1)
-       grid%tg_min_zhel_03(istart:iend,jde-2)=grid%tg_min_zhel_03(istart:iend,jde-1)
-       grid%tg_max_wwind(istart:iend,jde-2)=grid%tg_max_wwind(istart:iend,jde-1)
-       grid%tg_max_wwind(istart:iend,jde-2)=grid%tg_max_wwind(istart:iend,jde-1)
-       grid%tg_max_m10wind(istart:iend,jde-2)=grid%tg_max_m10wind(istart:iend,jde-1)
+    if(jpe>=jde-2) then
+       grid%tg_max_zhel_25(imin:imax,jde-1)=grid%tg_max_zhel_25(imin:imax,jde-2)
+       grid%tg_max_zhel_03(imin:imax,jde-1)=grid%tg_max_zhel_03(imin:imax,jde-2)
+       grid%tg_min_zhel_25(imin:imax,jde-1)=grid%tg_min_zhel_25(imin:imax,jde-2)
+       grid%tg_min_zhel_03(imin:imax,jde-1)=grid%tg_min_zhel_03(imin:imax,jde-2)
+       grid%tg_max_wwind(imin:imax,jde-1)=grid%tg_max_wwind(imin:imax,jde-2)
+       grid%tg_max_wwind(imin:imax,jde-1)=grid%tg_max_wwind(imin:imax,jde-2)
+       grid%tg_max_m10wind(imin:imax,jde-1)=grid%tg_max_m10wind(imin:imax,jde-2)
     endif
 
     call update_tg_time(grid,.false.)
