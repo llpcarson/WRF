@@ -7,7 +7,8 @@ module module_tracker
   real, parameter :: invE=0.36787944117 ! 1/e
 
   ! Copied from tracker:
-  real,parameter :: searchrad=250.0 ! km - ignore data more than this far from domain center
+  real,parameter :: searchrad_6=250.0 ! km - ignore data more than this far from domain center
+  real,parameter :: searchrad_7=200.0 ! km - ignore data more than this far from domain center
   integer, parameter :: maxtp=11 ! number of tracker parameters
   real, parameter :: uverrmax = 225.0  ! For use in get_uv_guess
   real, parameter :: ecircum = 40030.2  ! Earth's circumference
@@ -19,8 +20,8 @@ module module_tracker
   real, parameter :: errpmax=485.0 ! max stddev of track parameters
   real, parameter :: errpgro=1.25 ! stddev multiplier
 
-  real, parameter :: max_wind_search_radius=searchrad ! max radius for vmax search
-  real, parameter :: min_mlsp_search_radius=searchrad ! max radius for pmin search
+  real, parameter :: max_wind_search_radius=searchrad_7 ! max radius for vmax search
+  real, parameter :: min_mlsp_search_radius=searchrad_7 ! max radius for pmin search
 
   ! Also used:
   real, parameter :: km2nmi = 0.539957, kn2mps=0.514444, mps2kn=1./kn2mps, pi180=0.01745329251
@@ -174,7 +175,11 @@ contains
     loncen=9e9
     rcen=9e9
     calcparm=.false.
-    srsq=searchrad*searchrad*1e6
+    if(grid%vortex_tracker==6) then
+       srsq=searchrad_6*searchrad_6*1e6
+    else
+       srsq=searchrad_7*searchrad_7*1e6
+    endif
 
     ! Get the first guess from the prior nest motion timestep:
     have_guess=grid%track_have_guess
@@ -1491,10 +1496,13 @@ contains
        itemp=nint(1.2*111./(dxdymean*sqrt(2.)))
        ismooth=min(30,max(2,itemp))
        !write(0,*) 'wind itemp=',itemp,' ismooth=',ismooth,' dxdymean=',dxdymean
-    else
+    elseif(grid%vortex_tracker==6) then
        itemp=nint(0.3*111./(dxdymean*sqrt(2.)))
        ismooth=min(15,max(1,itemp))
        !write(0,*) 'non-wind itemp=',itemp,' ismooth=',ismooth,' dxdymean=',dxdymean
+    else
+       itemp=nint(150./(dxdymean*sqrt(2.)))
+       ismooth=min(50,max(2,itemp))
     endif
 
     ! Restrict the search area.  By default, we search everywhere except the boundary:
