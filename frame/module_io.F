@@ -82,7 +82,7 @@ SUBROUTINE wrf_ioinit( Status )
   INTEGER, INTENT(INOUT) :: Status
 !Local
   CHARACTER(len=80) :: SysDepInfo
-  INTEGER :: ierr(10), minerr, maxerr
+  INTEGER :: ierr(11), minerr, maxerr
 !
   Status = 0
   ierr = 0
@@ -124,6 +124,9 @@ SUBROUTINE wrf_ioinit( Status )
 #ifdef GRIB2
   CALL ext_gr2_ioinit(   SysDepInfo, ierr(10) )
 #endif
+#ifdef OUT4WAVE
+  CALL ext_out4wave_ioinit(   SysDepInfo, ierr(11) )
+#endif
   minerr = MINVAL(ierr)
   maxerr = MAXVAL(ierr)
   IF ( minerr < 0 ) THEN
@@ -147,7 +150,7 @@ SUBROUTINE wrf_ioexit( Status )
   INTEGER, INTENT(INOUT) :: Status
 !Local
   LOGICAL, EXTERNAL :: use_output_servers
-  INTEGER :: ierr(11), minerr, maxerr
+  INTEGER :: ierr(12), minerr, maxerr
 !
   Status = 0
   ierr = 0
@@ -185,8 +188,11 @@ SUBROUTINE wrf_ioexit( Status )
 #ifdef GRIB2
   CALL ext_gr2_ioexit(  ierr(10) )
 #endif
+#ifdef OUT4WAVE
+  CALL ext_out4wave_ioexit(  ierr(11) )
+#endif
  
-  IF ( use_output_servers() ) CALL wrf_quilt_ioexit( ierr(11) )
+  IF ( use_output_servers() ) CALL wrf_quilt_ioexit( ierr(12) )
   minerr = MINVAL(ierr)
   maxerr = MAXVAL(ierr)
   IF ( minerr < 0 ) THEN
@@ -372,6 +378,23 @@ SUBROUTINE wrf_open_for_write_begin( FileName , Comm_compute, Comm_io, SysDepInf
           CALL wrf_dm_bcast_bytes( Status, IWORDSIZE )
         ENDIF
 #endif
+#ifdef OUT4WAVE
+      CASE ( IO_OUT4WAVE )
+        IF ( multi_files(io_form) .OR. wrf_dm_on_monitor() ) THEN
+          IF ( multi_files(io_form) ) THEN
+            CALL wrf_get_myproc ( myproc )
+            CALL append_to_filename ( LocFilename , FileName , myproc, 4 )
+          ELSE
+            LocFilename = FileName
+          ENDIF
+          CALL ext_out4wave_open_for_write_begin ( LocFileName , Comm_compute, Comm_io, SysDepInfo, &
+                                              Hndl , Status )
+        ENDIF
+        IF ( .NOT. multi_files(io_form) ) THEN
+          CALL wrf_dm_bcast_bytes( Hndl, IWORDSIZE )
+          CALL wrf_dm_bcast_bytes( Status, IWORDSIZE )
+        ENDIF
+#endif
       CASE DEFAULT
         IF ( io_form .NE. 0 ) THEN
           WRITE(mess,*)'Tried to open ',FileName,' writing: no valid io_form (',io_form,')'
@@ -479,6 +502,13 @@ SUBROUTINE wrf_open_for_write_commit( DataHandle , Status )
 #ifdef INTIO
       CASE ( IO_INTIO   )
         CALL ext_int_open_for_write_commit ( Hndl , Status )
+#endif
+#ifdef OUT4WAVE
+      CASE ( IO_OUT4WAVE   )
+          IF ( multi_files(io_form) .OR. wrf_dm_on_monitor() ) THEN
+            CALL ext_out4wave_open_for_write_commit ( Hndl , Status )
+          ENDIF
+          IF ( .NOT. multi_files(io_form) ) CALL wrf_dm_bcast_bytes( Status, IWORDSIZE )
 #endif
         CASE DEFAULT
           Status = 0
@@ -954,6 +984,12 @@ SUBROUTINE wrf_inquire_opened ( DataHandle, FileName , FileStatus, Status )
           CALL wrf_dm_bcast_bytes( FileStatus, IWORDSIZE )
           CALL wrf_dm_bcast_bytes( Status    , IWORDSIZE )
 #endif
+#ifdef OUT4WAVE
+        CASE ( IO_OUT4WAVE )
+          IF (wrf_dm_on_monitor()) CALL ext_out4wave_inquire_opened ( Hndl, FileName , FileStatus, Status )
+          CALL wrf_dm_bcast_bytes( FileStatus, IWORDSIZE )
+          CALL wrf_dm_bcast_bytes( Status    , IWORDSIZE )
+#endif
         CASE DEFAULT
           FileStatus = WRF_FILE_NOT_OPENED
           Status = 0
@@ -1048,6 +1084,16 @@ SUBROUTINE wrf_inquire_filename ( DataHandle, FileName , FileStatus, Status )
           CALL wrf_dm_bcast_bytes( FileStatus, IWORDSIZE )
           CALL wrf_dm_bcast_bytes( Status    , IWORDSIZE )
 #endif
+#ifdef OUT4WAVE
+        CASE ( IO_OUT4WAVE )
+          str_length = LEN ( FileName )
+          DO str_count = 1 , str_length
+            FileName(str_count:str_count) = ' '
+          END DO
+          IF (wrf_dm_on_monitor()) CALL ext_out4wave_inquire_filename ( Hndl, FileName , FileStatus, Status )
+          CALL wrf_dm_bcast_bytes( FileStatus, IWORDSIZE )
+          CALL wrf_dm_bcast_bytes( Status    , IWORDSIZE )
+#endif
         CASE DEFAULT
           Status = 0
       END SELECT
@@ -1118,6 +1164,11 @@ SUBROUTINE wrf_iosync ( DataHandle, Status )
 #ifdef INTIO
         CASE ( IO_INTIO   )
           IF ( multi_files(io_form) .OR. wrf_dm_on_monitor() ) CALL ext_int_iosync( Hndl, Status )
+          CALL wrf_dm_bcast_bytes( Status    , IWORDSIZE )
+#endif
+#ifdef OUT4WAVE
+        CASE ( IO_OUT4WAVE )
+          IF ( multi_files(io_form) .OR. wrf_dm_on_monitor() ) CALL ext_out4wave_iosync( Hndl, Status )
           CALL wrf_dm_bcast_bytes( Status    , IWORDSIZE )
 #endif
         CASE DEFAULT
@@ -1207,6 +1258,11 @@ SUBROUTINE wrf_ioclose ( DataHandle, Status )
 #ifdef INTIO
         CASE ( IO_INTIO   )
           IF ( multi_files(io_form) .OR.  wrf_dm_on_monitor() ) CALL ext_int_ioclose( Hndl, Status )
+          CALL wrf_dm_bcast_bytes( Status, IWORDSIZE )
+#endif
+#ifdef OUT4WAVE
+        CASE ( IO_OUT4WAVE   )
+          IF ( multi_files(io_form) .OR.  wrf_dm_on_monitor() ) CALL ext_out4wave_ioclose( Hndl, Status )
           CALL wrf_dm_bcast_bytes( Status, IWORDSIZE )
 #endif
         CASE DEFAULT
@@ -2281,6 +2337,9 @@ SUBROUTINE wrf_write_field1 ( DataHandle , DateStr , VarName , Field , FieldType
 #ifdef GRIB2
   EXTERNAL ext_gr2_write_field
 #endif
+#ifdef OUT4WAVE
+  EXTERNAL     ext_out4wave_write_field
+#endif
 
   CALL wrf_debug( DEBUG_LVL, 'module_io.F: in wrf_write_field' )
 
@@ -2396,6 +2455,16 @@ SUBROUTINE wrf_write_field1 ( DataHandle , DateStr , VarName , Field , FieldType
           CALL collect_fld_and_call_pkg ( ext_int_write_field, multi_files(io_form),                  &
                                      Hndl , DateStr , VarName , Field , FieldType , Comm , IOComm , &
                                      DomainDesc , bdy_mask, MemoryOrder , Stagger , DimNames ,              &
+                                     DomainStart , DomainEnd ,                                    &
+                                     MemoryStart , MemoryEnd ,                                    &
+                                     PatchStart , PatchEnd ,                                      &
+                                     Status )
+#endif
+#ifdef OUT4WAVE
+        CASE ( IO_OUT4WAVE )
+          CALL collect_fld_and_call_pkg ( ext_out4wave_write_field, multi_files(io_form),         &
+                                     Hndl , DateStr , VarName , Field , FieldType , Comm , IOComm , &
+                                     DomainDesc , bdy_mask, MemoryOrder , Stagger , DimNames ,    &
                                      DomainStart , DomainEnd ,                                    &
                                      MemoryStart , MemoryEnd ,                                    &
                                      PatchStart , PatchEnd ,                                      &

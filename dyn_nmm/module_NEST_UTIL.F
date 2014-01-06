@@ -361,38 +361,25 @@ SUBROUTINE MSLP_DIAG (MSLP,PINT,T,Q               &
       REAL, PARAMETER                                       :: LAPSR=6.5E-3, GI=1./G,D608=0.608
       REAL, PARAMETER                                       :: COEF3=287.05*GI*LAPSR, COEF2=-1./COEF3
       REAL, PARAMETER                                       :: TRG=2.0*R_D*GI,LAPSI=1.0/LAPSR
-      REAL                                                  :: RTOPP,APELP,DZ,SFCT,A
-      REAL, DIMENSION(IMS:IME,JMS:JME,KMS:KME)              :: Z
+      REAL                                                  :: RTOPP,APELP,DZ,SFCT,A,Z1,Z2
       INTEGER                                               :: I,J,K
 !-----------------------------------------------------------------------------------------------------
 
-
+     MSLP=-9999.99
+     K=1
      DO J = JTS, MIN(JTE,JDE)
-      DO I = ITS, MIN(ITE,IDE)
-         Z(I,J,1)=FIS(I,J)*GI
-      ENDDO
-     ENDDO
-
-     DO K = KTS,KTE
-      DO J = JTS, MIN(JTE,JDE)
        DO I = ITS, MIN(ITE,IDE)
+         Z1 = FIS(I,J)*GI
          APELP      = (PINT(I,J,K+1)+PINT(I,J,K))
          RTOPP      = TRG*T(I,J,K)*(1.0+Q(I,J,K)*P608)/APELP
          DZ         = RTOPP*(DETA1(K)*PDTOP+DETA2(K)*PD(I,J))
-         Z(I,J,K+1) = Z(I,J,K) + DZ
-       ENDDO
-      ENDDO
-     ENDDO
+         Z2         = Z1 + DZ
 
-     MSLP=-9999.99
-     DO J = JTS, MIN(JTE,JDE)
-       DO I = ITS, MIN(ITE,IDE)
-         SFCT      = T(I,J,1)*(1.+D608*Q(I,J,1)) + LAPSR*(Z(I,J,1)+Z(I,J,2))*0.5
-         A         = LAPSR*Z(I,J,1)/SFCT
+         SFCT      = T(I,J,1)*(1.+D608*Q(I,J,1)) + LAPSR*(Z1+Z2)*0.5
+         A         = LAPSR*Z1/SFCT
          MSLP(I,J) = PINT(I,J,1)*(1-A)**COEF2
        ENDDO
      ENDDO
-
 
 END SUBROUTINE MSLP_DIAG
 !------------------------------------------------------------------------------------------------------

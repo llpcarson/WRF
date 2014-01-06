@@ -18,8 +18,9 @@ state  real tg_interval_start -  dyn_nmm 1 - rh0123                     "TG_INTE
 state  real tg_interval_end   -  dyn_nmm 1 - rh0123                       "TG_INTERVAL_END" "End of interval, in seconds since analysis time" "s"
 state  real tg_duration       -  dyn_nmm 1 - rh0123                           "TG_DURATION" "Duration of accumulation interval in seconds" "s"
 # --------------------------- namelist config ----------------------------
-rconfig integer tg_reset_stream  namelist,time_control 1 0 rh0123         "TG_RESET_STREAM" "Stream number of history stream that resets Tornado Genesis products" ""
-rconfig integer tg_option        namelist,time_control 1 0 rh0123               "TG_OPTION" "Tornado Genesis products flag: 1=Enable, 0=Disable" ""
+rconfig integer tg_reset_stream  namelist,time_control 1      0 rh0123    "TG_RESET_STREAM" "Stream number of history stream that resets Tornado Genesis products" ""
+rconfig integer tg_option        namelist,physics      1      0 rh0123          "TG_OPTION" "Tornado Genesis products flag: 1=Enable, 0=Disable" ""
+rconfig integer ntornado         namelist,physics max_domains 1 rh0123           "NTORNADO" "Number of dynamics timesteps between updates of tg_ vars" ""
 #------------------------------- tg option -------------------------------
 package  tg_none         tg_option==0   -   -
 package  tg_emc2014spc   tg_option==1   -   state:tg_max_m10wind,tg_max_wwind,tg_min_wwind,tg_max_zhel_25,tg_min_zhel_25,tg_max_zhel_03,tg_min_zhel_03,tg_interval_start,tg_interval_end,tg_duration,tg_total_precip

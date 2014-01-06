@@ -2044,7 +2044,7 @@ SUBROUTINE open_hist_w ( grid , config_flags, stream, alarm_id, &
    ENDIF
    CALL construct_filename2a ( fname , hist_outname, &
                                grid%id , 2 , timestr )
-   IF ( stream-first_history .EQ. history_only ) THEN
+   IF ( stream .EQ. history_only ) THEN
      WRITE(n2,'("DATASET=HISTORY")')
    ELSE IF ( stream-first_history .GE. 10 ) THEN
      WRITE(n2,'("DATASET=AUXHIST",I2)')stream-first_history

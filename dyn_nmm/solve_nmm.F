@@ -99,6 +99,10 @@
 !zhang's doing
       INTEGER,SAVE :: NTSD_restart1,NTSD_restart2,NTSD_restart3
 #endif
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      integer, save :: cpu
+      integer :: newcpu
+#endif
       integer :: ierr,nrand,idt
       INTEGER,SAVE :: NTSD_restart
 !     INTEGER :: MPI_COMM_COMP,MYPE,MYPROC,NPES
@@ -137,26 +141,18 @@
      &,            radiation_tim,rdtemp_tim,turbl_tim,cltend_tim        &
      &,            cucnvc_tim,gsmdrive_tim,hdiff_tim,bocoh_tim          &
      &,            pfdht_tim,ddamp_tim,bocov_tim,uv_htov_tim,sum_tim    &
+     &,            diag_tim,adjppt_tim,tornado_tim
 #ifdef HWRF
-     &,            adjppt_tim,sst_tim,flux_tim
-#else
-     &,            adjppt_tim
+      real,save :: sst_tim,flux_tim,hifreq_tim
 #endif
 #ifdef NMM_FIND_LOAD_IMBALANCE
       real,save :: loadimbal_tim,previmbal_tim
 #endif
       real,save :: exch_tim_max
-      real :: btim,btimx
+      real :: ttim,btimx
       real :: et_max,this_tim
       integer :: n_print_time
 !
-#ifdef RSL
-      integer rsl_internal_milliclock
-      external rsl_internal_milliclock
-# define timef rsl_internal_milliclock
-#else
-      real*8 :: timef
-#endif
 !-----------------------------------------------------------------------
 !
 !#ifdef DEREF_KLUDGE
@@ -228,6 +224,7 @@
 !***  ADVANCE_count STARTS AT ZERO FOR ALL RUNS (REGULAR AND RESTART).
 !***
 !-----------------------------------------------------------------------
+      ttim=now_time() ! used to calculate total time spent in solver
 !
       CALL DOMAIN_CLOCK_GET(GRID,ADVANCEcOUNT=NTSD_current)
 !
@@ -410,6 +407,7 @@
 !***  SET TIMING VARIABLES TO ZERO AT START OF FORECAST.
 !-----------------------------------------------------------------------
       if(grid%ntsd==0)then
+        sum_tim=0.
         solve_tim=0.
         exch_tim=0.
         pdte_tim=0.
@@ -434,18 +432,33 @@
         uv_htov_tim=0.
         exch_tim_max=0.
         adjppt_tim=0.
+        diag_tim=0.
+        tornado_tim=0.
+#ifdef HWRF
+        sst_tim=0.
+        flux_tim=0.
+        hifreq_tim=0.
+#endif
 #ifdef NMM_FIND_LOAD_IMBALANCE
         previmbal_tim=0.
         loadimbal_tim=0.
+        call nmm_get_cpu(cpu,ierr)
 #endif
       endif
 !-----------------------------------------------------------------------
       N_MOIST=NUM_MOIST
 
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(previmbal_tim)
+      call blockf(previmbal_tim,'top of solve_nmm')
+      call nmm_get_cpu(newcpu,ierr)
+      if(cpu/=newcpu) then
+3011     format('warning: CPU changed from ',I0,' to ',I0)
+         write(message,3011) cpu,newcpu
+         call wrf_message(message)
+         cpu=newcpu
+      endif
 #endif
-!
+
       DO J=MYJS_P4,MYJE_P4
         grid%iheg(J)=MOD(J+1,2)
         grid%ihwg(J)=grid%iheg(J)-1
@@ -487,9 +500,9 @@
 !
       CALL wrf_debug ( 100 , 'nmm: in patch' )
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after alloc and init')
 #endif
-      btimx=timef()
+      btimx=now_time()
 !#ifdef DM_PARALLEL
 !#    include "HALO_NMM_ZZ.inc"
 !#endif
@@ -537,7 +550,6 @@
       ENDIF
 !-----------------------------------------------------------------------
 !
-      btim=timef()
 !
 !-----------------------------------------------------------------------
 !***  UPDATE RANDOM NUMBERS IF REQUIRED
@@ -604,9 +616,9 @@
         FIRST=.TRUE.
 !       call hpm_init()
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'before halo & init stuff')
 #endif
-        btimx=timef()
+        btimx=now_time()
 !emc_2010_bugfix_h50
         grid%mommix=amin1(grid%mommix,1.0)
 !emc_2010_bugfix_h50
@@ -666,9 +678,6 @@
 #endif
 !
 !-----------------------------------------------------------------------
-#ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
-#endif
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_A.inc"
 #endif
@@ -738,8 +747,11 @@
 !-----------------------------------------------------------------------
 !***  USE THE FOLLOWING VARIABLES TO KEEP TRACK OF EXCHANGE TIMES.
 !-----------------------------------------------------------------------
-        exch_tim=exch_tim+timef()-btimx
-!       this_tim=timef()-btimx
+        exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo and init stuff')
+#endif
+!       this_tim=now_time()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max           &
 !    &                    ,mpi_comm_comp,irtn)
 !       exch_tim_max=exch_tim_max+et_max
@@ -765,12 +777,14 @@
 !-----------------------------------------------------------------------
 #ifdef HWRF
 ! Coupling insertion:->
+      btimx=now_time()
       call ATM_TSTEP_INIT(NTSD_current,grid%NPHS,GRID%ID,grid%NPHS*grid%dt, &
       ids,idf,jds,jdf,its,ite,jts,jte,ims,ime,jms,jme,           &
                        kds,kde,kts,kte,kms,kme,                  &
                        grid%HLON,grid%HLAT,grid%VLON,grid%VLAT,grid%sm,                   &
                        grid%i_parent_start,grid%j_parent_start,  &
                        grid%guessdtc,grid%dtc)
+      sst_tim=sst_tim+now_time()-btimx
 !<-:coupling insertion
 !
 #endif
@@ -779,21 +793,24 @@
 !-----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after atm_tstep_init')
 #endif
-      btimx=timef()
+      btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_D.inc"
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
-!     this_tim=timef()-btimx
+      exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo d')
+#endif
+!     this_tim=now_time()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
 !     exch_tim_max=exch_tim_max+et_max
 !
-      btimx=timef()
+      btimx=now_time()
 !
       CALL PDTE(                                                        &
 #ifdef DM_PARALLEL
@@ -808,28 +825,31 @@
      &           ,ITS,ITE,JTS,JTE,KTS,KTE)
 
 
-      pdte_tim=pdte_tim+timef()-btimx
+      pdte_tim=pdte_tim+now_time()-btimx
 !
 !-----------------------------------------------------------------------
 !***  ADVECTION OF grid%t, grid%u, AND grid%v
 !-----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after pdte')
 #endif
-      btimx=timef()
+      btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_F.inc"
 #    include "HALO_NMM_F1.inc"
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
-!     this_tim=timef()-btimx
+      exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo F & F1')
+#endif
+!     this_tim=now_time()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
 !     exch_tim_max=exch_tim_max+et_max
-      btimx=timef()
+      btimx=now_time()
 !
       CALL ADVE(grid%ntsd,GRID%DT,grid%deta1,grid%deta2,grid%pdtop                          &
      &         ,grid%curv,grid%f,grid%fad,grid%f4d,grid%em_loc,grid%emt_loc,grid%en,grid%ent,grid%dx_nmm,grid%dy_nmm      &
@@ -846,7 +866,7 @@
      &         ,IMS,IME,JMS,JME,KMS,KME                                 &
      &         ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-      adve_tim=adve_tim+timef()-btimx
+      adve_tim=adve_tim+now_time()-btimx
 !
 !-----------------------------------------------------------------------
 !***  PASSIVE SUBSTANCE WORKING PART
@@ -866,15 +886,18 @@
         idtadt_block: IF(MOD(grid%ntsd,IDTADT)==0) THEN
 !-----------------------------------------------------------------------
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after adve')
 #endif
-          btimx=timef()
+          btimx=now_time()
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_I.inc"
 #endif
-          exch_tim=exch_tim+timef()-btimx
+          exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo I')
+#endif
 !
-          btimx=timef()
+          btimx=now_time()
 !
           DO K=KTS,KTE
             DO J=JMS,JME
@@ -1037,7 +1060,7 @@
           ENDDO
         ENDIF
 !
-        had2_tim=had2_tim+timef()-btimx
+        had2_tim=had2_tim+now_time()-btimx
 !-----------------------------------------------------------------------
 !
         ENDIF idtadt_block
@@ -1055,15 +1078,18 @@
 !
 !-----------------------------------------------------------------------
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after mono, etc.')
 #endif
-        btimx=timef()
+        btimx=now_time()
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_I_2.inc"
 #endif
-        exch_tim=exch_tim+timef()-btimx
+        exch_tim=exch_tim+now_time()-btimx
 !
-        btimx=timef()
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo I2')
+#endif
+        btimx=now_time()
 !
         do KS=1,NUM_CHEM
           DO K=KTS,KTE
@@ -1136,7 +1162,7 @@
 !***  PRESSURE TENDENCY, ETA/SIGMADOT, VERTICAL PART OF OMEGA-ALPHA TERM
 !-----------------------------------------------------------------------
 !
-      btimx=timef()
+      btimx=now_time()
 !
       CALL VTOA(                                                        &
      &          grid%ntsd,GRID%DT,grid%pt,grid%eta2                                    &
@@ -1148,13 +1174,13 @@
      &         ,IMS,IME,JMS,JME,KMS,KME                                 &
      &         ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-      vtoa_tim=vtoa_tim+timef()-btimx
+      vtoa_tim=vtoa_tim+now_time()-btimx
 !
 !-----------------------------------------------------------------------
 !***  VERTICAL ADVECTION OF HEIGHT
 !-----------------------------------------------------------------------
 !
-      btimx=timef()
+      btimx=now_time()
 !
 
 
@@ -1168,28 +1194,31 @@
      &         ,IMS,IME,JMS,JME,KMS,KME                                 &
      &         ,ITS,ITE,JTS,JTE,KTS,KTE)
 
-      vadz_tim=vadz_tim+timef()-btimx
+      vadz_tim=vadz_tim+now_time()-btimx
 !
 !-----------------------------------------------------------------------
 !***  HORIZONTAL ADVECTION OF HEIGHT
 !-----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after vadz')
 #endif
-      btimx=timef()
+      btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_G.inc"
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
-!     this_tim=timef()-btimx
+      exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo G')
+#endif
+!     this_tim=now_time()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
 !     exch_tim_max=exch_tim_max+et_max
 !
-      btimx=timef()
+      btimx=now_time()
 !
       CALL HADZ(grid%ntsd,GRID%DT,grid%hydro,grid%hbm2,grid%deta1,grid%deta2,grid%pdtop               &
      &         ,grid%dx_nmm,grid%dy_nmm,grid%fad                                       &
@@ -1200,28 +1229,31 @@
      &         ,IMS,IME,JMS,JME,KMS,KME                                 &
      &         ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-      hadz_tim=hadz_tim+timef()-btimx
+      hadz_tim=hadz_tim+now_time()-btimx
 !
 !-----------------------------------------------------------------------
 !***  ADVECTION OF grid%w
 !-----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after hadz')
 #endif
-      btimx=timef()
+      btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_H.inc"
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
-!     this_tim=timef()-btimx
+      exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo H')
+#endif
+!     this_tim=now_time()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
 !     exch_tim_max=exch_tim_max+et_max
 !
-      btimx=timef()
+      btimx=now_time()
 !
 
       CALL EPS(grid%ntsd,GRID%DT,grid%hydro,grid%dx_nmm,grid%dy_nmm,grid%fad                     &
@@ -1238,7 +1270,7 @@
      &        ,IMS,IME,JMS,JME,KMS,KME                                  &
      &        ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-      eps_tim=eps_tim+timef()-btimx
+      eps_tim=eps_tim+now_time()-btimx
 !
 !-----------------------------------------------------------------------
 !
@@ -1249,7 +1281,7 @@
 !-----------------------------------------------------------------------
 !
       IF(MOD(grid%ntsd,GRID%IDTAD)==0)THEN
-        btimx=timef()
+        btimx=now_time()
 !
         vad2_micro_check: IF (ETAMP_PHYSICS) THEN
           CALL VAD2(grid%ntsd,GRID%DT,GRID%IDTAD,grid%dx_nmm,grid%dy_nmm               &
@@ -1314,7 +1346,7 @@
 !
         ENDIF vad2_micro_check
 !
-        vad2_tim=vad2_tim+timef()-btimx
+        vad2_tim=vad2_tim+now_time()-btimx
 !
       ENDIF
 !    
@@ -1324,9 +1356,9 @@
 !
       idtad_block: IF(MOD(grid%ntsd,GRID%IDTAD)==0)THEN
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after vad2')
 #endif
-        btimx=timef()
+        btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_I.inc"
@@ -1339,13 +1371,16 @@
 #endif
 !
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
-!       this_tim=timef()-btimx
+        exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo I & I3')
+#endif
+!       this_tim=now_time()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max           &
 !    &                    ,mpi_comm_comp,irtn)
 !       exch_tim_max=exch_tim_max+et_max
 !
-        btimx=timef()
+        btimx=now_time()
 !
 !-----------------------------------------------------------------------
         had2_micro_check: IF (ETAMP_PHYSICS) THEN
@@ -1489,7 +1524,7 @@
 !-----------------------------------------------------------------------
         ENDIF had2_micro_check
 !-----------------------------------------------------------------------
-        had2_tim=had2_tim+timef()-btimx
+        had2_tim=had2_tim+now_time()-btimx
 !-----------------------------------------------------------------------
 !
       ENDIF idtad_block
@@ -1528,7 +1563,7 @@
       IF(MOD(NTSD_rad,GRID%NRADS)==0.OR.                               &
      &   MOD(NTSD_rad,GRID%NRADL)==0)THEN
 !
-        btimx=timef()
+        btimx=now_time()
         IF(OPERATIONAL_PHYSICS)THEN
           CALL UPDATE_MOIST(MOIST,grid%q,grid%cwm,grid%f_ice,grid%f_rain,N_MOIST           &
      &                     ,IDS,IDF,JDS,JDF,KDS,KDE                    &
@@ -1576,14 +1611,14 @@
 ! grid%rswinc - CLEAR-SKY downward shortwave at the surface (new for AQ)
 !                            ***  NOTE  ***
 !
-        radiation_tim=radiation_tim+timef()-btimx
+        radiation_tim=radiation_tim+now_time()-btimx
       ENDIF
 !
 !----------------------------------------------------------------------
 !***  APPLY TEMPERATURE TENDENCY DUE TO RADIATION
 !----------------------------------------------------------------------
 !
-      btimx=timef()
+      btimx=now_time()
 !
 !     Pass in XTIME (elapsed time from start of parent) to compute
 !     the time passed into the zenith angle code consistently between
@@ -1596,7 +1631,7 @@
      &           ,IMS,IME,JMS,JME,KMS,KME                              &
      &           ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-      rdtemp_tim=rdtemp_tim+timef()-btimx
+      rdtemp_tim=rdtemp_tim+now_time()-btimx
 !
 !
 #ifdef HWRF
@@ -1605,12 +1640,10 @@
 !*** GET SSTs FROM DMITRY's COUPLER ON TO THE PARENT AND NESTED GRID
 !-------------------------------------------------------------------------------------
 ! Coupling insertion:->
+        btimx=now_time()
         CALL ATM_GETSST(grid%sst,grid%sm)
+        sst_tim=sst_tim+now_time()-btimx
 !<-:Coupling insertion
-      IF(GRID%ID .EQ. 1 .AND. MOD(grid%ntsd,grid%NPHS)==0)THEN
-        btimx=timef()
-        sst_tim=sst_tim+timef()-btimx
-      ENDIF
 
 #endif
 !----------------------------------------------------------------------
@@ -1619,7 +1652,7 @@
 !
       IF(MOD(grid%ntsd,GRID%NPHS)==0)THEN
 !
-        btimx=timef()
+        btimx=now_time()
 !
         IF(OPERATIONAL_PHYSICS                                         &
      &    .AND.MOD(NTSD_rad,GRID%NRADS)/=0                             &
@@ -1682,7 +1715,7 @@
 ! grid%rlwin/grid%rswin - downward longwave/shortwave at the surface
 !                     ***  NOTE  ***
 !
-        turbl_tim=turbl_tim+timef()-btimx
+        turbl_tim=turbl_tim+now_time()-btimx
 #ifdef HWRF
 
 
@@ -1705,22 +1738,19 @@
 !
 
 ! Coupling insertion:->
+      btimx=now_time()
       call ATM_DOFLUXES(grid%twbs,grid%qwbs,grid%rlwin,grid%rswin,grid%radot,grid%rswout, &
       grid%taux,grid%tauy,grid%pint(:,:,1),grid%prec,grid%u10,grid%v10)
+      flux_tim=flux_tim+now_time()-btimx
 !<-:Coupling insertion
 !
-
-      IF(GRID%ID .EQ. 1 .AND. MOD(grid%ntsd,grid%NPHS)==0)THEN
-        btimx=timef()
-        flux_tim=flux_tim+timef()-btimx
-      ENDIF
 
 #endif
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after atm_dofluxes')
 #endif
-        btimx=timef()
+        btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 # include "HALO_NMM_TURBL_A.inc"
@@ -1730,30 +1760,33 @@
 # include "HALO_NMM_TURBL_B.inc"
 #endif
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
-!       this_tim=timef()-btimx
+        exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo TURBL A & B')
+#endif
+!       this_tim=now_time()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max           &
 !    &                    ,mpi_comm_comp,irtn)
 !       exch_tim_max=exch_tim_max+et_max
 !
 !***  INTERPOLATE WINDS FROM H POINTS BACK TO grid%v POINTS.
 !
-        btimx=timef()
+        btimx=now_time()
         CALL UV_H_TO_V(grid%ntsd,GRID%DT,GRID%NPHS,grid%uz0h,grid%vz0h,grid%uz0,grid%vz0         &
      &                ,grid%dudt,grid%dvdt,grid%u,grid%v,grid%hbm2,grid%ive,grid%ivw                       &
      &                ,IDS,IDF,JDS,JDF,KDS,KDE                          &
      &                ,IMS,IME,JMS,JME,KMS,KME                          &
      &                ,ITS,ITE,JTS,JTE,KTS,KTE)
-        uv_htov_tim=uv_htov_tim+timef()-btimx
+        uv_htov_tim=uv_htov_tim+now_time()-btimx
 !
 !----------------------------------------------------------------------
 !*** STORE ORIGINAL TEMPERATURE ARRAY
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after uv_h_to_v')
 #endif
-        btimx=timef()
+        btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_J.inc"
@@ -1771,21 +1804,24 @@
 #endif
 #endif
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
-!       this_tim=timef()-btimx
+        exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo J, J2 & J3')
+#endif
+!       this_tim=now_time()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max           &
 !    &                    ,mpi_comm_comp,irtn)
 !       exch_tim_max=exch_tim_max+et_max
 !
         ICLTEND=-1
-        btimx=timef()
+        btimx=now_time()
 ! 
         CALL CLTEND(ICLTEND,GRID%NPHS,grid%t,grid%t_old,grid%t_adj                    &
      &             ,IDS,IDF,JDS,JDF,KDS,KDE                            &
      &             ,IMS,IME,JMS,JME,KMS,KME                            &
      &             ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-        cltend_tim=cltend_tim+timef()-btimx
+        cltend_tim=cltend_tim+now_time()-btimx
      ENDIF
 !
 !----------------------------------------------------------------------
@@ -1800,23 +1836,26 @@
      &   CONFIG_FLAGS%CU_PHYSICS.eq.SASSCHEME))THEN                       ! 
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after cltend')
 #endif
-        btimx=timef()
+        btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_C.inc"
 #endif
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
-!       this_tim=timef()-btimx
+        exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo C')
+#endif
+!       this_tim=now_time()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max          &
 !    &                    ,mpi_comm_comp,irtn)
 !       exch_tim_max=exch_tim_max+et_max
      ENDIF
 !
       convection: IF(CONFIG_FLAGS%CU_PHYSICS/=0)THEN
-        btimx=timef()
+        btimx=now_time()
 !
 !***  GET TENDENCIES FOR GD SCHEME.
 !    
@@ -1884,7 +1923,7 @@
         call end_timing('cucnvc')
 !----------------------------------------------------------------------
 !
-        cucnvc_tim=cucnvc_tim+timef()-btimx
+        cucnvc_tim=cucnvc_tim+now_time()-btimx
 !
 
 
@@ -1905,9 +1944,9 @@
 !emc_2010_bugfix_h50
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after cucnvc')
 #endif
-        btimx=timef()
+        btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 # include "HALO_NMM_SAS_A.inc"
@@ -1917,12 +1956,14 @@
 # include "HALO_NMM_SAS_B.inc"
 #endif
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
-
+        exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo SAS A & B')
+#endif
 !
 !***  INTERPOLATE WINDS FROM H POINTS BACK TO V POINTS AFTER SAS 
 !
-        btimx=timef()
+        btimx=now_time()
 
 !emc_2010_bugfix_h50
         CALL UV_H_TO_V(grid%NTSD,GRID%DT,GRID%NCNVC,grid%UZ0H,grid%VZ0H,grid%UZ0,grid%VZ0         &
@@ -1930,7 +1971,7 @@
      &                ,IDS,IDF,JDS,JDF,KDS,KDE                          &
      &                ,IMS,IME,JMS,JME,KMS,KME                          &
      &                ,ITS,ITE,JTS,JTE,KTS,KTE)
-        uv_htov_tim=uv_htov_tim+timef()-btimx
+        uv_htov_tim=uv_htov_tim+now_time()-btimx
 !emc_2010_bugfix_h50
 
      ENDIF ! for SAS only 
@@ -1945,7 +1986,7 @@
 !----------------------------------------------------------------------
 !
       IF(MOD(grid%ntsd,GRID%NPHS)==0)THEN
-        btimx=timef()
+        btimx=now_time()
 !
         CALL GSMDRIVE(grid%ntsd,GRID%DT,GRID%NPHS,N_MOIST                   &
      &               ,grid%dx_nmm(ITS,JC),GRID%DY,grid%sm,grid%hbm2,grid%fis               &
@@ -1964,14 +2005,14 @@
      &               ,IMS,IME,JMS,JME,KMS,KME                          &
      &               ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-        gsmdrive_tim=gsmdrive_tim+timef()-btimx
+        gsmdrive_tim=gsmdrive_tim+now_time()-btimx
 !
 !-----------------------------------------------------------------------
 !---------PRECIPITATION ASSIMILATION------------------------------------
 !-----------------------------------------------------------------------
 !
         IF (GRID%PCPFLG) THEN
-          btimx=timef()
+          btimx=now_time()
 !
           CALL CHKSNOW(grid%ntsd,GRID%DT,GRID%NPHS,grid%sr,PPTDAT                 &
      &      ,IDS,IDE,JDS,JDE,KDS,KDE                                    &
@@ -1982,7 +2023,7 @@
      &      ,IMS,IME,JMS,JME,KMS,KME                                    &
      &      ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-          adjppt_tim=adjppt_tim+timef()-btimx
+          adjppt_tim=adjppt_tim+now_time()-btimx
         ENDIF
 !
 !----------------------------------------------------------------------
@@ -1990,14 +2031,14 @@
 !----------------------------------------------------------------------
 !      
         ICLTEND=0
-        btimx=timef()
+        btimx=now_time()
 !
         CALL CLTEND(ICLTEND,GRID%NPHS,grid%t,grid%t_old,grid%t_adj                    &
      &             ,IDS,IDF,JDS,JDF,KDS,KDE                            &
      &             ,IMS,IME,JMS,JME,KMS,KME                            &
      &             ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-        cltend_tim=cltend_tim+timef()-btimx
+        cltend_tim=cltend_tim+now_time()-btimx
       ENDIF
 !
 !----------------------------------------------------------------------
@@ -2005,35 +2046,38 @@
 !----------------------------------------------------------------------
 !
       ICLTEND=1
-      btimx=timef()
+      btimx=now_time()
 !
       CALL CLTEND(ICLTEND,GRID%NPHS,grid%t,grid%t_old,grid%t_adj                      &
      &           ,IDS,IDF,JDS,JDF,KDS,KDE                              &
      &           ,IMS,IME,JMS,JME,KMS,KME                              &
      &           ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-      cltend_tim=cltend_tim+timef()-btimx
+      cltend_tim=cltend_tim+now_time()-btimx
 !
 !----------------------------------------------------------------------
 !***  LATERAL DIFFUSION
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after GSMDRIVE and a few other things')
 #endif
-      btimx=timef()
+      btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_K.inc"
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
-!     this_tim=timef()-btimx
+      exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo K')
+#endif
+!     this_tim=now_time()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
 !     exch_tim_max=exch_tim_max+et_max
 !
-      btimx=timef()
+      btimx=now_time()
 !
       CALL HDIFF(grid%ntsd,GRID%DT,grid%fis,grid%dy_nmm,grid%hdac,grid%hdacv         &
      &          ,grid%hbm2,grid%deta1,GRID%SIGMA                       &
@@ -2060,16 +2104,16 @@
         ENDDO
       ENDIF
 !
-      hdiff_tim=hdiff_tim+timef()-btimx
+      hdiff_tim=hdiff_tim+now_time()-btimx
 !
 !----------------------------------------------------------------------
 !***  UPDATING BOUNDARY VALUES AT HEIGHT POINTS
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after hdiff')
 #endif
-      btimx=timef()
+      btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_L.inc"
@@ -2085,13 +2129,16 @@
 #endif
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
-!     this_tim=timef()-btimx
+      exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo L, L2 & L3')
+#endif
+!     this_tim=now_time()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
 !     exch_tim_max=exch_tim_max+et_max
 !
-      btimx=timef()
+      btimx=now_time()
 !
       CALL MASS_BOUNDARY(GRID%ID,grid%ntsd,GRID%DT,NEST,NUNIT_NBC,NBOCO,LAST_TIME,TSPH &
      &          ,LB,grid%eta1,grid%eta2,grid%pdtop,grid%pt,grid%res                              &
@@ -2141,7 +2188,7 @@
       endif
 #endif
 !
-      bocoh_tim=bocoh_tim+timef()-btimx
+      bocoh_tim=bocoh_tim+now_time()-btimx
 !     if(mod(grid%ntsd,n_print_time)==0)then
 !       call twr(grid%t,0,'grid%t',grid%ntsd,mype,npes,mpi_comm_comp &
 !    &          ,ids,ide,jds,jde,kds,kde                               &
@@ -2160,9 +2207,9 @@
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after h bdy')
 #endif
-      btimx=timef()
+      btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_A.inc"
@@ -2180,13 +2227,16 @@
 #endif
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
-!     this_tim=timef()-btimx
+      exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo A, A2 and A3 after h bdy')
+#endif
+!     this_tim=now_time()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max             &
 !    &                  ,mpi_comm_comp,irtn)
 !     exch_tim_max=exch_tim_max+et_max
 !
-      btimx=timef()
+      btimx=now_time()
 !
       CALL PFDHT(grid%ntsd,LAST_TIME,grid%pt,grid%deta1,grid%deta2,grid%pdtop,grid%res,grid%fis           &
      &          ,grid%hydro,GRID%SIGMA,FIRST,grid%dx_nmm,grid%dy_nmm                  &
@@ -2200,28 +2250,31 @@
      &          ,ITS,ITE,JTS,JTE,KTS,KTE)
 
 !
-      pfdht_tim=pfdht_tim+timef()-btimx
+      pfdht_tim=pfdht_tim+now_time()-btimx
 !
 !----------------------------------------------------------------------
 !***  DIVERGENCE DAMPING
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after pfdht')
 #endif
-      btimx=timef()
+      btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_B.inc"
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
-!     this_tim=timef()-btimx
+      exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo B after pfdht')
+#endif
+!     this_tim=now_time()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max            &
 !    &                  ,mpi_comm_comp,irtn)
 !     exch_tim_max=exch_tim_max+et_max
 !
-      btimx=timef()
+      btimx=now_time()
 !
       CALL DDAMP(grid%ntsd,GRID%DT,grid%deta1,grid%deta2,grid%pdsl      &
      &          ,grid%pdtop,grid%div,grid%hbm2                          &
@@ -2231,7 +2284,7 @@
      &          ,IMS,IME,JMS,JME,KMS,KME                                &
      &          ,ITS,ITE,JTS,JTE,KTS,KTE)
 !
-      ddamp_tim=ddamp_tim+timef()-btimx
+      ddamp_tim=ddamp_tim+now_time()-btimx
 !
 !----------------------------------------------------------------------
 !----------------------------------------------------------------------
@@ -2239,9 +2292,9 @@
       IF(FIRST.AND.grid%ntsd==0)THEN
         FIRST=.FALSE.
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after ddamp')
 #endif
-        btimx=timef()
+        btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_A.inc"
@@ -2252,8 +2305,11 @@
 #endif
 #endif
 !-----------------
-        exch_tim=exch_tim+timef()-btimx
-!       this_tim=timef()-btimx
+        exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo A & A2 after ddamp')
+#endif
+!       this_tim=now_time()-btimx
 !       call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max          &
 !    &                    ,mpi_comm_comp,irtn)
 !       exch_tim_max=exch_tim_max+et_max
@@ -2266,21 +2322,24 @@
 !----------------------------------------------------------------------
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
-      call blockf(loadimbal_tim)
+      call blockf(loadimbal_tim,'after ddamp again')
 #endif
-      btimx=timef()
+      btimx=now_time()
 !-----------------
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_C.inc"
 #endif
 !-----------------
-      exch_tim=exch_tim+timef()-btimx
-!     this_tim=timef()-btimx
+      exch_tim=exch_tim+now_time()-btimx
+#ifdef NMM_FIND_LOAD_IMBALANCE
+      call blockf(loadimbal_tim,'after halo C after ddamp')
+#endif
+!     this_tim=now_time()-btimx
 !     call mpi_allreduce(this_tim,et_max,1,mpi_real,mpi_max            &
 !    &                  ,mpi_comm_comp,irtn)
 !     exch_tim_max=exch_tim_max+et_max
 !
-      btimx=timef()
+      btimx=now_time()
 !
       CALL BOCOV(GRID%ID,grid%ntsd,GRID%DT,LB,grid%U_BXS,grid%U_BXE,grid%U_BYS,grid%U_BYE,grid%V_BXS &
      &          ,grid%V_BXE,grid%V_BYS,grid%V_BYE,grid%U_BTXS,grid%U_BTXE,grid%U_BTYS,grid%U_BTYE,grid%V_BTXS  &
@@ -2292,7 +2351,7 @@
      &          ,ITS,ITE,JTS,JTE,KTS,KTE )
  
 !
-      bocov_tim=bocov_tim+timef()-btimx
+      bocov_tim=bocov_tim+now_time()-btimx
 !
 !----------------------------------------------------------------------
 !***  COPY THE NMM VARIABLE grid%q2 TO THE WRF VARIABLE grid%tke_pbl
@@ -2314,78 +2373,99 @@
 !
 !----------------------------------------------------------------------
 !
-      solve_tim=solve_tim+timef()-btim
+      solve_tim=solve_tim+now_time()-ttim
+      ttim=now_time()
 !
 !----------------------------------------------------------------------
 !***  PRINT TIMING VARIABLES WHEN DESIRED.
 !----------------------------------------------------------------------
-!
-      sum_tim=pdte_tim+adve_tim+vtoa_tim+vadz_tim+hadz_tim+eps_tim     &
-     &       +vad2_tim+had2_tim+radiation_tim+rdtemp_tim+turbl_tim     &
-     &       +cltend_tim+cucnvc_tim+gsmdrive_tim+hdiff_tim             &
-     &       +bocoh_tim+pfdht_tim+ddamp_tim+bocov_tim+uv_htov_tim      &
-     &       +exch_tim+adjppt_tim
+      if(mod(grid%ntsd,n_print_time)==0)then
+        sum_tim = adjppt_tim + exch_tim + pdte_tim + adve_tim + vtoa_tim + &
+             vadz_tim + hadz_tim + eps_tim + vad2_tim + had2_tim +         &
+             radiation_tim + rdtemp_tim + turbl_tim + cltend_tim +         &
+             cucnvc_tim + gsmdrive_tim + hdiff_tim + bocoh_tim +           &
+             pfdht_tim + ddamp_tim + bocov_tim + uv_htov_tim + diag_tim +  &
+             tornado_tim
+#ifdef HWRF
+        sum_tim = sum_tim + sst_tim + flux_tim + hifreq_tim
+#endif
 #if defined(NMM_FIND_LOAD_IMBALANCE)
-      sum_tim=sum_tim + loadimbal_tim + previmbal_tim
+        sum_tim=sum_tim + loadimbal_tim + previmbal_tim
 #endif
 !
-      if(mod(grid%ntsd,n_print_time)==0)then
-        write(message,*)' grid%ntsd=',grid%ntsd,' solve_tim=',solve_tim*1.e-3          &
-     &           ,' sum_tim=',sum_tim*1.e-3
-        call wrf_message(trim(message))
-        write(message,*)' pdte_tim=',pdte_tim*1.e-3,' pct=',pdte_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' adve_tim=',adve_tim*1.e-3,' pct=',adve_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' vtoa_tim=',vtoa_tim*1.e-3,' pct=',vtoa_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' vadz_tim=',vadz_tim*1.e-3,' pct=',vadz_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' hadz_tim=',hadz_tim*1.e-3,' pct=',hadz_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' eps_tim=',eps_tim*1.e-3,' pct=',eps_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' vad2_tim=',vad2_tim*1.e-3,' pct=',vad2_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' had2_tim=',had2_tim*1.e-3,' pct=',had2_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' radiation_tim=',radiation_tim*1.e-3,' pct=',radiation_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' rdtemp_tim=',rdtemp_tim*1.e-3,' pct=',rdtemp_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' turbl_tim=',turbl_tim*1.e-3,' pct=',turbl_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' cltend_tim=',cltend_tim*1.e-3,' pct=',cltend_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' cucnvc_tim=',cucnvc_tim*1.e-3,' pct=',cucnvc_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' gsmdrive_tim=',gsmdrive_tim*1.e-3,' pct=',gsmdrive_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' adjppt_tim=',adjppt_tim*1.e-3,' pct=',adjppt_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' hdiff_tim=',hdiff_tim*1.e-3,' pct=',hdiff_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' bocoh_tim=',bocoh_tim*1.e-3,' pct=',bocoh_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' pfdht_tim=',pfdht_tim*1.e-3,' pct=',pfdht_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' ddamp_tim=',ddamp_tim*1.e-3,' pct=',ddamp_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' bocov_tim=',bocov_tim*1.e-3,' pct=',bocov_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' uv_h_to_v_tim=',uv_htov_tim*1.e-3,' pct=',uv_htov_tim/sum_tim*100.
-        call wrf_message(trim(message))
-        write(message,*)' exch_tim=',exch_tim*1.e-3,' pct=',exch_tim/sum_tim*100.
+17      format(A16,F13.6,A5,F7.3,'%')
+        write(message,*)' grid%ntsd=',grid%ntsd,' solve_tim=',solve_tim    &
+     &           ,' sum_tim=',sum_tim
         call wrf_message(trim(message))
 #ifdef NMM_FIND_LOAD_IMBALANCE
-        write(message,*)' loadimbal_tim=',loadimbal_tim*1.e-3,' pct=',loadimbal_tim/sum_tim*100.
+        write(message,*)' running on cpu ',cpu
         call wrf_message(trim(message))
-        write(message,*)' previmbal_tim=',previmbal_tim*1.e-3,' pct=',previmbal_tim/sum_tim*100.
+#endif
+        write(message,17)' pdte_tim=',pdte_tim,' pct=',pdte_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' adve_tim=',adve_tim,' pct=',adve_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' vtoa_tim=',vtoa_tim,' pct=',vtoa_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' vadz_tim=',vadz_tim,' pct=',vadz_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' hadz_tim=',hadz_tim,' pct=',hadz_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' eps_tim=',eps_tim,' pct=',eps_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' vad2_tim=',vad2_tim,' pct=',vad2_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' had2_tim=',had2_tim,' pct=',had2_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' radiation_tim=',radiation_tim,' pct=',radiation_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' rdtemp_tim=',rdtemp_tim,' pct=',rdtemp_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' turbl_tim=',turbl_tim,' pct=',turbl_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' cltend_tim=',cltend_tim,' pct=',cltend_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' cucnvc_tim=',cucnvc_tim,' pct=',cucnvc_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' gsmdrive_tim=',gsmdrive_tim,' pct=',gsmdrive_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' adjppt_tim=',adjppt_tim,' pct=',adjppt_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' hdiff_tim=',hdiff_tim,' pct=',hdiff_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' bocoh_tim=',bocoh_tim,' pct=',bocoh_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' pfdht_tim=',pfdht_tim,' pct=',pfdht_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' ddamp_tim=',ddamp_tim,' pct=',ddamp_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' bocov_tim=',bocov_tim,' pct=',bocov_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' uv_h_to_v_tim=',uv_htov_tim,' pct=',uv_htov_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' exch_tim=',exch_tim,' pct=',exch_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' diag_tim=',diag_tim,' pct=',diag_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' tornado_tim=',tornado_tim,' pct=',tornado_tim/sum_tim*100.
+        call wrf_message(trim(message))
+#ifdef HWRF
+        write(message,17)' sst_tim=',sst_tim,' pct=',sst_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' flux_tim=',flux_tim,' pct=',flux_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' hifreq_tim=',hifreq_tim,' pct=',hifreq_tim/sum_tim*100.
+        call wrf_message(trim(message))
+#endif
+#ifdef NMM_FIND_LOAD_IMBALANCE
+        write(message,17)' loadimbal_tim=',loadimbal_tim,' pct=',loadimbal_tim/sum_tim*100.
+        call wrf_message(trim(message))
+        write(message,17)' previmbal_tim=',previmbal_tim,' pct=',previmbal_tim/sum_tim*100.
         call wrf_message(trim(message))
 #endif
 
 !        call time_stats(exch_tim,'exchange',grid%ntsd,mype,npes,mpi_comm_comp)
-!        write(message,*)' exch_tim_max=',exch_tim_max*1.e-3
+!        write(message,17)' exch_tim_max=',exch_tim_max
 !        call wrf_message(trim(message))
 !
         call field_stats(grid%t,mype,mpi_comm_comp                          &
@@ -2414,6 +2494,7 @@
 !
 #ifdef MOVE_NESTS
    IF ( grid%num_moves.EQ.-99 ) THEN
+     btimx=now_time()
       call start_timing()
       call stats_for_move(grid,config_flags &
                          ,IDS,IDE,JDS,JDE,KDS,KDE &
@@ -2424,10 +2505,12 @@
       write(message,3303) grid%id
       call end_timing(message)
    CALL wrf_debug ( 100 , 'nmm stats_for_move: after advection' )
+     diag_tim=diag_tim+now_time()-btimx
    ENDIF
 #endif
 #ifdef HWRF
    hwrfx_mlsp: if(grid%vortex_tracker /= 1) then
+     btimx=now_time()
 
 !    output MSLP over parent domain for diagonostic purposes. outputs are hourly.
 !    This is gopal's doing
@@ -2443,6 +2526,7 @@
 
 
      ENDIF
+     diag_tim=diag_tim+now_time()-btimx
    endif hwrfx_mlsp
 #endif
 
@@ -2456,7 +2540,9 @@
 !
 !
 ! Coupling insertion:->
+      btimx=now_time()
       call ATM_SENDFLUXES
+      flux_tim=flux_tim+now_time()-btimx
 !<-:Coupling insertion
 !
 ! Kwon's doing to check heat flux
@@ -2472,8 +2558,14 @@
 !
 !--------------------------------------------------------------------------------------------------------------
 !
+     IF(mod(grid%NTSD,grid%ntornado)==0) then
+        btimx=now_time()
+        CALL CALC_TORNADO_GENESIS(GRID,CONFIG_FLAGS)
+        tornado_tim=tornado_tim+now_time()-btimx
+     ENDIF
+
 #ifdef HWRF
-     CALL CALC_TORNADO_GENESIS(GRID,CONFIG_FLAGS)
+     btimx=now_time()
      IF(grid%hifreq_lun /= 0) THEN
         CALL HIFREQ_WRITE(grid%hifreq_lun,GRID%NTSD,GRID%DT,GRID%HLAT,GRID%HLON    &
                       ,GRID%U10,GRID%V10,grid%pint,grid%t,grid%q                   &
@@ -2482,11 +2574,13 @@
                       ,IMS,IME,JMS,JME,KMS,KME                                     &
                       ,ITS,ITE,JTS,JTE,KTS,KTE   )
      ENDIF
+     hifreq_tim=hifreq_tim+now_time()-btimx
 #endif
 !
 !-------------------  END OF HIGH FREQUENCY OUTPUT MODULE  ----------------------------
  
 
+      solve_tim=solve_tim+now_time()-ttim
       Return
 !----------------------------------------------------------------------
 !**********************************************************************
@@ -2862,7 +2956,7 @@
 !----------------------------------------------------------------------
 !**********************************************************************
 !----------------------------------------------------------------------
-      SUBROUTINE TIME_STATS(TIME_LCL,NAME,ntsd,MYPE,NPES,MPI_COMM_COMP)
+      SUBROUTINE TIME_STATS(TIME_LCL_IN,NAME,ntsd,MYPE,NPES,MPI_COMM_COMP)
 !----------------------------------------------------------------------
 !**********************************************************************
       USE MODULE_EXT_INTERNAL
@@ -2875,7 +2969,7 @@
 #endif
 !----------------------------------------------------------------------
       INTEGER,INTENT(IN) :: MPI_COMM_COMP,MYPE,NPES,ntsd
-      REAL,INTENT(IN) :: TIME_LCL
+      REAL,INTENT(IN) :: TIME_LCL_IN
 !
       CHARACTER(*),INTENT(IN) :: NAME
 !
@@ -2892,7 +2986,7 @@
 !
       REAL,ALLOCATABLE,DIMENSION(:) :: TIME,SORT_TIME
       REAL,DIMENSION(2) :: REMOTE
-      REAL :: TIME_MAX,TIME_MEAN,TIME_MEDIAN,TIME_MIN
+      REAL :: TIME_MAX,TIME_MEAN,TIME_MEDIAN,TIME_MIN,TIME_LCL
 !
       CHARACTER(5) :: TIMESTEP
       CHARACTER(6) :: FMT
@@ -2902,6 +2996,7 @@
 !**********************************************************************
 !----------------------------------------------------------------------
 !
+      TIME_LCL=TIME_LCL_IN*1000.
       IF(ntsd<=9)THEN
         FMT='(I1.1)'
         NLEN=1
@@ -3239,34 +3334,26 @@
 !----------------------------------------------------------------------
       END SUBROUTINE FIELD_STATS
 !----------------------------------------------------------------------
-      FUNCTION TIMEF()
-      implicit none
-      REAL*8 TIMEF
-#if defined(OLD_TIMERS)
-      INTEGER :: IC,IR
-      CALL SYSTEM_CLOCK(COUNT=IC,COUNT_RATE=IR)
-      TIMEF=REAL(IC)/REAL(IR)*1000.0
-#else
-      call hires_timer(timef)
-      timef=timef*1000
-#endif
-      END FUNCTION TIMEF
 #if defined(NMM_FIND_LOAD_IMBALANCE)
-      SUBROUTINE BLOCKF(block_tim)
+      SUBROUTINE BLOCKF(block_tim,what)
 #if defined(DM_PARALLEL)
+        use module_timing, only: now_time
         use module_dm, only : local_communicator
         implicit none
-        interface
-           function timef()
-             real*8 timef
-           end function timef
-        end interface
         integer :: ierr
         real, intent(inout) :: block_tim
-        real*8 :: when
-        when=timef()
+        character*(*), intent(in) :: what
+        real*8 :: when, len
+        character*255 :: message
+        when=now_time()
         call mpi_barrier(local_communicator,ierr)
-        block_tim=real(block_tim+(timef()-when))
+        len=now_time()-when
+        if(len>1.0) then
+100        format(A,': large load imbalance: ',F0.5)
+           write(message,100) trim(what),len
+           call wrf_message(trim(message))
+        endif
+        block_tim=real(block_tim+len)
 #else
         return
 #endif

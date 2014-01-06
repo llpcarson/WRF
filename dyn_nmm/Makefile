@@ -29,6 +29,7 @@ MODULES =                 		\
 	module_tracker.o		\
 	module_tornado_genesis.o	\
 	module_relax.o			\
+	nmm_get_cpu.o                   \
 	$(CASE_MODULE)
 
 # moved into share/Makefile

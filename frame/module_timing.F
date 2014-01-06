@@ -28,7 +28,6 @@ CONTAINS
       cn = 0
    END SUBROUTINE init_module_timing
 
-
    SUBROUTINE start_timing
      use module_wrf_error, only: silence
 
@@ -101,6 +100,22 @@ CONTAINS
       cn = cn - 1
 
    END SUBROUTINE end_timing
+
+   FUNCTION now_time() result(timef)
+     ! This is a simple subroutine that returns the current time in
+     ! seconds since some arbitrary reference point.  This routine is
+     ! meant to be used to accumulate timing information.  See solve_nmm
+     ! for examples.
+     implicit none
+     real*8 :: timef
+#if defined(OLD_TIMERS)
+     integer :: ic,ir
+     call system_clock(count=ic,count_rate=ir)
+     timef=real(ic)/real(ir)
+#else
+     call hires_timer(timef)
+#endif
+   END FUNCTION now_time
 
 END MODULE module_timing
 
