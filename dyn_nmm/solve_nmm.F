@@ -308,6 +308,7 @@
       IF (CONFIG_FLAGS%MP_PHYSICS == ETAMPNEW .OR.                 &
      &    CONFIG_FLAGS%MP_PHYSICS == ETAMPOLD .OR.                 &
      &    CONFIG_FLAGS%MP_PHYSICS == ETAMP_HWRF ) THEN
+!        NOTE: do NOT include mp_hwrf_advect here.
 !
          ETAMP_PHYSICS=.TRUE.
 !
@@ -1000,6 +1001,14 @@
             DO J=MYJS,MYJE
               DO I=MYIS,MYIE
                 MOIST(I,J,K,P_QV)=grid%q(I,J,K)/(1.-grid%q(I,J,K))
+              ENDDO
+            ENDDO
+          ENDDO
+        ENDIF
+        IF(.NOT.OPERATIONAL_PHYSICS .and. ETAMP_PHYSICS)THEN
+          DO K=KTS,KTE
+            DO J=MYJS,MYJE
+              DO I=MYIS,MYIE
                 WC = grid%cwm(I,J,K)
                 QI = 0.
                 QR = 0.
@@ -1350,6 +1359,9 @@
         had2_micro_check: IF (ETAMP_PHYSICS) THEN
 !-----------------------------------------------------------------------
 !
+          !NOTE: we don't get here in mp_hwrf_advect
+          ! This just handles the ETAMP_PHYSICS variants that do not
+          ! advect microphysics species.
           CALL HAD2(                                                   &
 #if defined(DM_PARALLEL)
      &              GRID%DOMDESC,                                      &
@@ -1373,7 +1385,7 @@
 !***  UPDATED HERE FROM grid%q EVERY ADVECTION TIMESTEP FOR NON-OPERATIONAL
 !***  CONFIGURATIONS WHERE IT MAY BE USED OUTSIDE OF THE PHYSICS.
 !
-          IF(.NOT.OPERATIONAL_PHYSICS)THEN
+          IF(.NOT.OPERATIONAL_PHYSICS .and. ETAMP_PHYSICS)THEN
             DO K=KTS,KTE
             DO J=MYJS,MYJE
             DO I=MYIS,MYIE

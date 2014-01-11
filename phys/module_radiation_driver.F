@@ -2370,9 +2370,10 @@ CONTAINS
       QVSW = EP_2 * esw / ( p_phy(i,k,j) - esw )
       QVSI = EP_2 * esi / ( p_phy(i,k,j) - esi )
 
-      IF ( PRESENT(F_QI) .and. PRESENT(F_QC) .and. PRESENT(F_QS) ) THEN
+      f_present: IF ( PRESENT(F_QI) .and. PRESENT(F_QC) .and. PRESENT(F_QS) ) THEN
 
 ! mji - For MP options 2, 4, 6, 7, 8, etc. (qc = liquid, qi = ice, qs = snow)
+!       ALSO for non-advected mp_hwrf (85)
          IF ( F_QI .and. F_QC .and. F_QS) THEN
             QCLD = QI(i,k,j)+QC(i,k,j)+QS(i,k,j)
             IF (QCLD .LT. QCLDMIN) THEN
@@ -2380,11 +2381,9 @@ CONTAINS
             ELSE
                weight = (QI(i,k,j)+QS(i,k,j)) / QCLD
             ENDIF
-         ENDIF
-
 ! mji - For MP options 1 and 3, (qc only)
 !  For MP=1, qc = liquid, for MP=3, qc = liquid or ice depending on temperature
-         IF ( F_QC .and. .not. F_QI .and. .not. F_QS ) THEN
+         ELSE IF ( F_QC .and. .not. F_QI .and. .not. F_QS ) THEN
             QCLD = QC(i,k,j)
             IF (QCLD .LT. QCLDMIN) THEN
                weight = 0.
@@ -2392,11 +2391,8 @@ CONTAINS
                if (t_phy(i,k,j) .gt. 273.15) weight = 0.
                if (t_phy(i,k,j) .le. 273.15) weight = 1.
             ENDIF
-         ENDIF
-
 ! mji - For MP option 5; (qc = liquid, qs = ice)
-         IF ( F_QC .and. .not. F_QI .and. F_QS .and. PRESENT(F_ICE_PHY) ) THEN
-
+         ELSE IF ( F_QC .and. .not. F_QI .and. F_QS .and. PRESENT(F_ICE_PHY) ) THEN
 ! Mixing ratios of cloud water & total ice (cloud ice + snow).
 ! Mixing ratios of rain are not considered in this scheme.
 ! F_ICE is fraction of ice
@@ -2417,12 +2413,23 @@ CONTAINS
            ELSE
               weight = F_ICE_PHY(i,k,j)
            ENDIF
+         ELSE IF (F_QC .and. F_QI .and. .not. F_QS) THEN
+            ! MP_HWRF_ADVECT: advected version of HWRF/Ferrier scheme
+            ! Added by Sam Trahan, January 2012, following ETAMP_HWRF behavior
+            QIMID=QI(i,k,j)
+            QWMID=QC(i,k,j)
+            QCLD=QIMID+QWMID
+            if(QCLD<QCLDMIN) then
+               weight=0.
+            else
+               weight=QIMID/QCLD
+            endif
          ENDIF
 
       ELSE
          CLDFRA(i,k,j)=0.
 
-      ENDIF !  IF ( F_QI .and. F_QC .and. F_QS)
+      ENDIF f_present !  IF ( F_QI .and. F_QC .and. F_QS)
 
 
       QVS_WEIGHT = (1-weight)*QVSW + weight*QVSI
