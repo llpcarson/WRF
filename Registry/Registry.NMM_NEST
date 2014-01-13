@@ -723,6 +723,7 @@ state   real    qng            ijkftb  scalar      1         m     i01hru=(UpMas
 state   real    qnh            ijkftb  scalar      1         m     i01hru=(UpMass:@ECopy,0.0)d=(DownMass:@ECopy,0.0)f=(BdyMass:@ECopy,0.0)       "QNHAIL"            "Hail Number concentration" "# kg(-1)"
 state   real    qnn            ijkftb  scalar      1         m     i01hru=(UpMass:@ECopy,0.0)d=(DownMass:@ECopy,0.0)f=(BdyMass:@ECopy,0.0)       "QNCCN"            "CCN Number concentration" "# kg(-1)"
 state   real    qnc            ijkftb  scalar      1         m     i01hru=(UpMass:@ECopy,0.0)d=(DownMass:@ECopy,0.0)f=(BdyMass:@ECopy,0.0)       "QNCLOUD"          "cloud water Number concentration" "# kg(-1)"
+state   real    qrimef         ijkftb  scalar      1         m     i01hru=(UpMass:@ECopy,0.0)d=(DownMass:@ECopy,0.0)f=(BdyMass:@ECopy,0.0)       "QRIMEF"           "rime factor * qi" "kg kg-1"
 
 
 state   real    -              ijkftb  dfi_scalar      1         m     -   -
@@ -1444,7 +1445,7 @@ package   morr_two_moment  mp_physics==10            -             moist:qv,qc,q
 package   sbu_ylinscheme    mp_physics==13           -             moist:qv,qc,qr,qi,qs
 package   wdm5scheme    mp_physics==14               -             moist:qv,qc,qr,qi,qs;scalar:qnn,qnc,qnr
 package   wdm6scheme    mp_physics==16               -             moist:qv,qc,qr,qi,qs,qg;scalar:qnn,qnc,qnr
-package   mp_hwrf_advect  mp_physics==75             -             moist:qv,qc,qr,qi;scalar:qni
+package   mp_hwrf_advect  mp_physics==75             -             moist:qv,qc,qr,qi;scalar:qrimef
 package   etamp_hwrf    mp_physics==85               -             moist:qv,qc,qr,qi,qs;state:f_ice,f_rain,f_rimef
 package   etampold      mp_physics==95               -             moist:qv,qc,qr,qs;state:f_ice,f_rain,f_rimef
 

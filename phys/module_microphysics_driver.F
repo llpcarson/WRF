@@ -46,6 +46,9 @@ SUBROUTINE microphysics_driver(                                          &
                       ,f_qns,f_qnr,f_qng,f_qnc,f_qnn,f_qh,f_qnh          &
                       ,            f_qzr,f_qzi,f_qzs,f_qzg,f_qzh         &
                       ,f_qvolg                                           &
+#if (NMM_CORE==1)
+                      ,qrimef_curr, f_qrimef                             &
+#endif
                       ,qrcuten, qscuten, qicuten, mu                     &
                       ,qt_curr,f_qt                                      &
                       ,mp_restart_state,tbpvs_state,tbpvs0_state         & ! for etampnew or etampold
@@ -418,7 +421,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                  ,qt_curr,qndrop_curr,qni_curr,qh_curr,qnh_curr   &
                  ,qns_curr,qnr_curr,qng_curr,qnn_curr,qnc_curr    &
                  ,qzr_curr,qzi_curr,qzs_curr,qzg_curr,qzh_curr    &
-                 ,qvolg_curr
+                 ,qvolg_curr,qrimef_curr
 
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                  &
          OPTIONAL,                                                &
@@ -467,7 +470,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
    LOGICAL, OPTIONAL :: f_qv,f_qc,f_qr,f_qi,f_qs,f_qg,f_qndrop,f_qni,f_qt    &
                        ,f_qns,f_qnr,f_qng,f_qnn,f_qnc,f_qh,f_qnh,f_qzr       &
-                       ,f_qzi,f_qzs,f_qzg,f_qzh,f_qvolg
+                       ,f_qzi,f_qzs,f_qzg,f_qzh,f_qvolg,f_qrimef
 
    LOGICAL, OPTIONAL, INTENT(IN) :: diagflag
    INTEGER, OPTIONAL, INTENT(IN) :: do_radar_ref
@@ -1394,8 +1397,8 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
              CALL wrf_debug ( 100 , 'microphysics_driver: calling etampnew_HWRF_advect')
 
              IF ( PRESENT( qv_curr ) .AND. PRESENT( qt_curr ) .AND. &
-                  PRESENT( qi_curr ) .AND. PRESENT( qni_curr ) .AND. &
-                  PRESENT( qc_curr ) .AND. PRESENT( qc_curr ) .AND. &
+                  PRESENT( qi_curr ) .AND. PRESENT( qrimef_curr ) .AND. &
+                  PRESENT( qc_curr ) .AND. PRESENT( qr_curr ) .AND. &
                   PRESENT( RAINNC  ) .AND. PRESENT ( RAINNCV ) .AND.  &
                   PRESENT( mp_restart_state )                  .AND. &
                   PRESENT( tbpvs_state )                      .AND. &
@@ -1408,7 +1411,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                  ,QV=qv_curr                                        &
                  ,QT=qt_curr                                        &
                  ,LOWLYR=LOWLYR,SR=SR                               &
-                 ,QC=qc_curr,QR=Qr_curr,QI=Qi_curr,QNI=Qni_curr     &
+                 ,QC=qc_curr,QR=Qr_curr,QI=Qi_curr,QRIMEF=Qrimef_curr &
                  ,IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde &
                  ,IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme &
                  ,ITS=its,ITE=ite, JTS=jts,JTE=jte, KTS=kts,KTE=kte &

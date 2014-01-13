@@ -94,13 +94,6 @@ MODULE module_mp_HWRF
      & ,FLARGE1=1.                                                      &
      & ,FLARGE2=.2
 
-      ! QNI_norime: ice number concentration when f_rimef=1.  This is in
-      ! units of (number of ice crystals)/(kg of pure ice)
-      ! The actual value does not matter.  It is just used to pass
-      ! QNI=QNI_norime/F_rimef back and forth between the dynamics and
-      ! physics.
-      REAL, PUBLIC, PARAMETER :: QNI_norime = 1.0e5 ! (number of ice crystals)/(kg of pure ice crystals)
-
 !      LOGICAL, PARAMETER :: PRINT_diag=.FALSE.  !GFDL
       LOGICAL, PARAMETER :: PRINT_err=.TRUE.    !GFDL** => eventually set this to .false.
 !--- Other public variables passed to other routines:
@@ -343,30 +336,22 @@ MODULE module_mp_HWRF
 !  Added by Sam Trahan, January 2012.
 !    When using this version of the scheme, F_ice, F_rimef and F_rain
 !    do not exist outside of subroutine ETAMP_NEW_HWRF_advect.  Instead,
-!    the dynamics uses QC, QR, QI and QNI.  Internally, within 
+!    the dynamics uses QC, QR, QI and QRIMEF.  Internally, within 
 !    ETAMP_NEW_HWRF_advect, the F_* variables are recalculated
 !    as local temporary arrays and the final result is translated back
-!    into QC, QR, QI and QNI.
+!    into QC, QR, QI and QRIMEF.
 !
 !    Storage of F_rimef is handled like this:
 !
-!      F_rimef=QNI_norime/QNI
-!
+!      F_rimef=QRIMEF/QI
 !      ... microphysics timestep happens ...
-!
-!      QNI=QNI_norime/F_rimef
-!
-!    treating the HWRF/Ferrier scheme as a dual-moment ice scheme.  The
-!    resulting value of QNI isn't quite right since, internally, this 
-!    scheme's ice number concentration isn't as simple as that.  However,
-!    this should be sufficient for the purposes of advection since the
-!    temperature and moisture are advected along with the microphysics.
+!      QRIMEF=QI*F_rimef
 
        SUBROUTINE ETAMP_NEW_HWRF_advect (itimestep,DT,DX,DY,GID,      &
      &                      RAINNC,RAINNCV,dz8w,                      &
      &                      rho_phy,p_phy,pi_phy,th_phy,qv,qt,        &
      &                      LOWLYR,SR,                                &
-     &                      QC,QR,QI,QNI,                             &
+     &                      QC,QR,QI,QRIMEF,                          &
      &                      ids,ide, jds,jde, kds,kde,                &
      &                      ims,ime, jms,jme, kms,kme,                &
      &                      its,ite, jts,jte, kts,kte                 )
@@ -384,7 +369,7 @@ MODULE module_mp_HWRF
       REAL, INTENT(IN),     DIMENSION(ims:ime, kms:kme, jms:jme)::      &
      &                      dz8w,p_phy,pi_phy,rho_phy
       REAL, INTENT(INOUT),  DIMENSION(ims:ime, kms:kme, jms:jme)::      &
-     &                      th_phy,qv,qt,qc,qr,qi,qni
+     &                      th_phy,qv,qt,qc,qr,qi,qrimef
       REAL, INTENT(INOUT),  DIMENSION(ims:ime,jms:jme)           ::     &
      &                                                   RAINNC,RAINNCV
       REAL, INTENT(OUT),    DIMENSION(ims:ime,jms:jme):: SR
@@ -400,7 +385,7 @@ MODULE module_mp_HWRF
 !-----------------------------------------------------------------------
 
 ! In advected version of HWRF/Ferrier scheme, F_ICE, F_RIMEF and F_RAIN
-! are all local variables.  Dynamics receives QI, QNI, QR and QC instead.
+! are all local variables.  Dynamics receives QI, QRIMEF, QR and QC instead.
       REAL,                 DIMENSION(ims:ime, kms:kme, jms:jme ) ::    &
      &                      F_ICE_PHY,F_RAIN_PHY,F_RIMEF_PHY
 
@@ -501,29 +486,17 @@ MODULE module_mp_HWRF
          QT(I,K,J)=QC(I,K,J)+QR(I,K,J)+QI(I,K,J)
          IF (QI(I,K,J) <= EPSQ) THEN
             F_ICE_PHY(I,K,J)=0.
+            F_RIMEF_PHY(I,K,J)=1.
             IF (T_PHY(I,K,J) < T_ICEK) F_ICE_PHY(I,K,J)=1.
          ELSE
             F_ICE_PHY(I,K,J)=MAX( 0., MIN(1., QI(I,K,J)/QT(I,K,J) ) )
+            F_RIMEF_PHY(I,K,J)=QRIMEF(I,K,J)/QI(I,K,J)
          ENDIF
          IF (QR(I,K,J) <= EPSQ) THEN
             F_RAIN_PHY(I,K,J)=0.
          ELSE
             F_RAIN_PHY(I,K,J)=QR(I,K,J)/(QR(I,K,J)+QC(I,K,J))
          ENDIF
-      ENDDO
-      ENDDO
-      ENDDO
-
-! Calculate F_rimef
-
-      DO j = jts,jte
-      DO k = kts,kte
-      DO i = its,ite
-         if(QI(i,k,j)<=0.0 .or. QNI(i,k,j)<=0.0 .or. QNI(i,k,j)>QNI_norime) then
-            F_rimef_phy(i,k,j)=1.0
-         else
-            F_rimef_phy(i,k,j)=QNI_norime/QNI(i,k,j)
-         endif
       ENDDO
       ENDDO
       ENDDO
@@ -567,23 +540,10 @@ MODULE module_mp_HWRF
                QC(I,K,J)=QC(I,K,J)-QR(I,K,J)
              ENDIF
           endif
+          QRIMEF(I,K,J)=QI(I,K,J)*F_RIMEF_PHY(I,K,J)
 	ENDDO
         ENDDO
      ENDDO
-
-! Recalculate QNI:
-
-      DO j = jts,jte
-      DO k = kts,kte
-      DO i = its,ite
-         if(F_rimef_phy(i,k,j)<=1.0) then
-            QNI(i,k,j)=QNI_norime
-         else
-            QNI(i,k,j)=QNI_norime/F_rimef_phy(i,k,j)
-         endif
-      ENDDO
-      ENDDO
-      ENDDO
 
 ! 
 ! update rain (from m to mm)
