@@ -156,6 +156,8 @@ RECURSIVE SUBROUTINE integrate ( grid )
    LOGICAL , EXTERNAL                     :: wrf_dm_on_monitor
    INTEGER                                :: idum1 , idum2 , ierr , open_status
    LOGICAL                                :: should_do_last_io
+   INTEGER,ALLOCATABLE                    :: domains_in_levels(:)       !Added by Thiago to initialize P-thread interface
+   INTEGER                                :: localmytask,localntasks    !Added by Thiago to initialize P-thread interface
 
    ! interface
    INTERFACE
@@ -283,7 +285,10 @@ RECURSIVE SUBROUTINE integrate ( grid )
        CALL STORE_DOMAIN_POINTER(grid)
 
        !Initialize the parallel integration P-threads driver, a C-based bridge. The current implementation spawns new P-thread in each time-step.
-       CALL init_threaded_integration(grid%max_dom,ierr)
+       CALL GET_FIRST_DOMAINS_IN_LEVELS(domains_in_levels)
+       CALL wrf_get_local_node_rank(localmytask,localntasks)
+       PRINT *,'My local rank is ',localmytask,' out of ',localntasks,' tasks'
+       CALL init_threaded_integration(grid%max_dom,GET_TOTAL_STORMS_IN_SIMULATION(),domains_in_levels,localmytask,ierr)
        IF(ierr .NE. 0) THEN
            CALL WRF_ERROR_FATAL('Could not initialize the parallel integration p-threads driver.')
        ENDIF

@@ -79,11 +79,8 @@ void get_multistorm_mpi_mode_(int* mpiMode, int* totalStorms, int *ierr)
     if(envMpiMode != NULL)
     {
         //Remove whitespaces and lower case letters
-        printf("WRF_NMM_MPI_MODE=%s\n",envMpiMode);
         removeWhitespaces(envMpiMode);
-        printf("WRF_NMM_MPI_MODE=%s\n",envMpiMode);
         toLowerStr(envMpiMode);
-        printf("WRF_NMM_MPI_MODE=%s\n",envMpiMode);
 
         //Translate the MPI mode
         if(startsWithPrefix("mpi_thread_single",envMpiMode))
@@ -107,7 +104,7 @@ void get_multistorm_mpi_mode_(int* mpiMode, int* totalStorms, int *ierr)
             return;
         }
         else if(strlen(envMpiMode))
-            printf("@@@@@ WARNING in get_multistorm_mpi_mode.c: Invalid value of environmental variable WRF_NMM_MPI_MODE.\n");
+            printf("@@@@@ WARNING in get_multistorm_mpi_mode.c: Invalid value of environmental variable WRF_NMM_MPI_MODE. Will determine MPI mode based on namelist.input values.\n");
     }
 
     //At this stage, the user-specified MPI mode could not be determined from the environment.

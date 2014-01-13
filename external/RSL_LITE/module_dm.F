@@ -1946,6 +1946,41 @@ SUBROUTINE wrf_get_nprocy( nprocy )
   RETURN
 END SUBROUTINE wrf_get_nprocy
 
+!Added by Thiago to compute the local MPI rank and task count within the residing node
+SUBROUTINE wrf_get_local_node_rank(localmytask,localntasks)
+  USE module_dm , ONLY : local_communicator,mytask,ntasks,wrf_get_hostid
+  IMPLICIT NONE
+  INTEGER,INTENT(OUT) :: localmytask,localntasks
+  INTEGER :: hostid,ierr,i
+  INTEGER, ALLOCATABLE :: hostids(:)
+
+#ifndef STUBMPI
+   INCLUDE 'mpif.h'
+   CALL wrf_get_hostid ( hostid )
+
+   ALLOCATE(hostids(ntasks))
+   CALL mpi_allgather(hostid,1, MPI_INTEGER,hostids,1,MPI_INTEGER,local_communicator,ierr)
+   if(ierr .NE. 0) call wrf_error_fatal('Error invoking mpi_allgather in wrf_get_local_node_rank.')
+
+   !Search for WRF tasks running in the same node
+   localntasks=0
+   localmytask=-1
+   DO i=1,ntasks
+      IF(hostid .EQ. hostids(i) ) THEN
+         IF(mytask .eq. (i-1)) localmytask = localntasks  !Save local MPI node rank of this process
+         localntasks = localntasks + 1                    !Increment the count of tasks in this node
+      ENDIF
+   ENDDO
+   DEALLOCATE( hostids )
+
+   !Check for valid values of localntasks and localmytask
+   if(localntasks .le. 0 .or. localmytask .lt. 0) call wrf_error_fatal('Error computing local rank and process count in wrf_get_local_node_rank.')
+#else
+   localmytask = 0
+   localntasks = 1
+#endif
+END SUBROUTINE wrf_get_local_node_rank
+
 SUBROUTINE wrf_dm_bcast_bytes ( buf , size )
    USE module_dm , ONLY : local_communicator
    IMPLICIT NONE

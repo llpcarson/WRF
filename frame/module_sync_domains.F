@@ -32,9 +32,9 @@ MODULE MODULE_SYNC_DOMAINS
     INTEGER,SAVE,DIMENSION(0:2),PRIVATE                         ::  idOfFirstDomainInLevel          !Holds the ID of the first domain in each nesting level. Needed for circular synchronized task privilege assignment.
     INTEGER,SAVE,DIMENSION(0:2),PRIVATE                         ::  idOfLastDomainInLevel           !Holds the ID of the last domain in each nesting level. Needed for circular synchronized task privilege assignment.
     INTEGER,SAVE,DIMENSION(0:2,1:max_domains),PRIVATE           ::  nestingLevelDomainBarrier       !This array is initialize to 0. It is used by the NEST_LEVEL_BARRIER routine to create an execution barrier until all domains from a nesting level call the routine.
-    INTEGER,SAVE,DIMENSION(1:max_domains)                       ::  domainCommunicatorList          !Holds a different MPI communicators for each model domain
-    INTEGER,SAVE,DIMENSION(1:max_domains)                       ::  domainXCommunicatorList         !Holds a different MPI communicators along x-direction of mesh for each model domain
-    INTEGER,SAVE,DIMENSION(1:max_domains)                       ::  domainYCommunicatorList         !Holds a different MPI communicators along y-direction of mesh for each model domain
+    INTEGER,SAVE,DIMENSION(1:max_domains),PRIVATE               ::  domainCommunicatorList          !Holds a different MPI communicators for each model domain
+    INTEGER,SAVE,DIMENSION(1:max_domains),PRIVATE               ::  domainXCommunicatorList         !Holds a different MPI communicators along x-direction of mesh for each model domain
+    INTEGER,SAVE,DIMENSION(1:max_domains),PRIVATE               ::  domainYCommunicatorList         !Holds a different MPI communicators along y-direction of mesh for each model domain
     LOGICAL,PARAMETER                                           ::  isIntegrationVerbose = .FALSE.  !Whether to display debug information.
 
     CONTAINS
@@ -330,6 +330,25 @@ MODULE MODULE_SYNC_DOMAINS
         INTEGER,INTENT(IN)  :: theDomainId  !The ID of the domain
         AM_I_LAST_DOMAIN_IN_MY_LEVEL = (theDomainId == idOfLastDomainInLevel(domainNestingLevel(theDomainId)))
     END FUNCTION
+
+
+    !This subroutine returns the domains corresponding to the first nesting level domains of the storms being forecasted
+    !in this simulation. For example, suppose that 2 storms are being forecasted by domain-pairs D02-D03 and D04-D05.
+    !This subroutine will return an array with values "(2,4)" as the IDs of the first domains representing each storm.
+    !The values are returned into the allocatable array passed as an argument to the subroutine.
+    SUBROUTINE GET_FIRST_DOMAINS_IN_LEVELS(theDomains)
+        IMPLICIT NONE
+        INTEGER,ALLOCATABLE,INTENT(INOUT) :: theDomains(:)
+
+        !Deallocate the array if allocated
+        IF(ALLOCATED(theDomains)) DEALLOCATE(theDomains)
+
+        !Allocate memory for the array and return values
+        IF(totalStormsInSimulation .GT. 0) THEN
+            ALLOCATE(theDomains(totalStormsInSimulation))
+            theDomains(1:totalStormsInSimulation) = domainsInEachNestingLevel(1,1:totalStormsInSimulation)
+        ENDIF
+    END SUBROUTINE
 
 
     !This subroutine blocks and waits until the specified domain receives the privilege to perform synchronized tasks
