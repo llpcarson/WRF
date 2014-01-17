@@ -93,6 +93,7 @@
      &          ,IPS,IPE,JPS,JPE,KPS,KPE                                &
      &          ,ITS,ITE,JTS,JTE,KTS,KTE
 !
+      LOGICAL :: advect_q2
       INTEGER :: I,ICLTEND,IDF,IRTN,J,JC,JDF,K,KDF,LB,N_MOIST &
      &          ,NTSD_current,L
 #ifdef HWRF
@@ -311,7 +312,11 @@
 !
       ENDIF
 
-
+      ADVECT_Q2=.TRUE.
+      if(CONFIG_FLAGS%BL_PBL_PHYSICS == GFSSCHEME .OR. &
+         CONFIG_FLAGS%BL_PBL_PHYSICS == GFS2011SCHEME) THEN
+         ADVECT_Q2=.FALSE.
+      endif
 
 !
 !-----------------------------------------------------------------------
@@ -1398,6 +1403,7 @@
      &             ,grid%n_iup_adh,grid%n_iup_adv                                &
      &             ,grid%iup_h,grid%iup_v,grid%iup_adh,grid%iup_adv                        &
      &             ,grid%ihe,grid%ihw,grid%ive,grid%ivw                                    &
+     &             ,advect_Q2 &
      &             ,IDS,IDF,JDS,JDF,KDS,KDE                            &
      &             ,IMS,IME,JMS,JME,KMS,KME                            &
      &             ,ITS,ITE,JTS,JTE,KTS,KTE)
