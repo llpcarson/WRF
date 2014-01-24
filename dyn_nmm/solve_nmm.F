@@ -29,7 +29,7 @@
 #ifdef HWRF
       USE MODULE_HIFREQ,                ONLY: HIFREQ_WRITE, HIFREQ_OPEN
 #endif
-      USE MODULE_TORNADO_GENESIS,       ONLY: CALC_TORNADO_GENESIS
+      USE MODULE_TORNADO_GENESIS,       ONLY: CALC_TORNADO_GENESIS, RESET_TORNADO_GENESIS
       USE MODULE_IGWAVE_ADJUST,         ONLY: PDTE,PFDHT,DDAMP,VTOA
       USE MODULE_ADVECTION,             ONLY: ADVE,VAD2,HAD2            &
                                              ,ADV2,MONO                 &
@@ -590,6 +590,14 @@
             call end_timing('Updating random numbers')
          ENDIF    ! for IF(IDT.EQ.0 .OR. NTSD .EQ. 0)
       ENDIF randif
+!-----------------------------------------------------------------------
+!***  RESET TORNADO GENESIS ACCUMULATORS WHEN NEEDED.
+!-----------------------------------------------------------------------
+     IF(grid%tg_want_reset/=0) THEN
+        btimx=now_time()
+        CALL RESET_TORNADO_GENESIS(GRID,CONFIG_FLAGS)
+        tornado_tim=tornado_tim+now_time()-btimx
+     ENDIF
 !-----------------------------------------------------------------------
 !***  ZERO OUT ACCUMULATED QUANTITIES WHEN NEEDED.
 !-----------------------------------------------------------------------
@@ -2529,7 +2537,13 @@
                      ,IDS,IDF,JDS,JDF,KDS,KDE      &
                      ,IMS,IME,JMS,JME,KMS,KME      &
                      ,ITS,ITE,JTS,JTE,KTS,KTE      )
-
+      if(size(grid%membrane_mslp)>1 .and. size(grid%best_mslp)>1) then
+         call CALC_BEST_MSLP(grid%best_mslp,grid%mslp, &
+                             grid%membrane_mslp,grid%fis, &
+                             IDS,IDE,JDS,JDE,KDS,KDE, &
+                             IMS,IME,JMS,JME,KMS,KME, &
+                             ITS,ITE,JTS,JTE,KTS,KTE)
+      endif
 
      ENDIF
      diag_tim=diag_tim+now_time()-btimx

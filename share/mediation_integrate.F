@@ -1591,6 +1591,20 @@ SUBROUTINE med_hist_out ( grid , stream, config_flags )
      CALL wrf_error_fatal( message )
    ENDIF
 
+#ifdef HWRF
+       ! HWRF special: auxhist2 and auxhist3 are duplicates of
+       ! history (0), so there is no point in outputting more than one of
+       ! them at the same time.  Prefer 0 over 2, and 2 over 3:
+      if ( (stream==HISTORY_ALARM .or. stream==AUXHIST2_ALARM) .and. &
+           WRFU_AlarmIsRinging( grid%alarms(AUXHIST3_ALARM) ) ) then
+         CALL WRFU_AlarmRingerOff(grid%alarms(AUXHIST3_ALARM))
+      endif
+      if ( stream==HISTORY_ALARM .and. &
+           WRFU_AlarmIsRinging( grid%alarms(AUXHIST2_ALARM) ) ) then
+         CALL WRFU_AlarmRingerOff(grid%alarms(AUXHIST2_ALARM))
+      endif
+#endif
+
    SELECT CASE( stream )
      CASE ( HISTORY_ALARM )
        CALL open_hist_w( grid, config_flags, stream, HISTORY_ALARM, &
@@ -1626,7 +1640,7 @@ SUBROUTINE med_hist_out ( grid , stream, config_flags )
 
 #if (NMM_CORE == 1)
    ! Reset tornado genesis fields after output:
-   call nmm_reset_tornado_genesis(grid,config_flags,stream)
+   call nmm_request_tg_reset(grid,config_flags,stream)
 #endif
 
    RETURN

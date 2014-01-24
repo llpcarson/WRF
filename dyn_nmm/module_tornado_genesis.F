@@ -2,7 +2,8 @@ module module_tornado_genesis
   implicit none
   private
 
-  public :: init_tornado_genesis, calc_tornado_genesis, reset_tornado_genesis
+  public :: init_tornado_genesis, calc_tornado_genesis, &
+       reset_tornado_genesis, request_tg_reset
 
   real, parameter :: wwind_cutoff = 40000.0 ! pascals
 
@@ -46,12 +47,17 @@ contains
     integer, intent(in) :: IMS,IME,JMS,JME,KMS,KME
     integer, intent(in) :: IPS,IPE,JPS,JPE,KPS,KPE
     integer :: i,j, istart,iend, jstart,jend
+    character*255 message
 
     if(config_flags%tg_option/=tg_emc2014spc) return
     jstart=max(jds,jps)
     jend=min(jpe,jde-1)
     istart=max(ids,ips)
     iend=min(ipe,ide-1)
+
+3012 format("Grid ",I2,": filling tornado genesis data with zeros")
+    write(message,3012) grid%id
+    call wrf_debug(1,message)
 
     do j=jstart,jend
        do i=istart,iend
@@ -65,9 +71,27 @@ contains
           grid%tg_total_precip(i,j)=0
        enddo
     enddo
-    
+
+    if(size(grid%tlow)>1 .and. size(grid%zlow)>1) then
+    do j=jstart,jend
+       do i=istart,iend
+          grid%tlow(i,j)=0
+          grid%zlow(i,j)=0
+       enddo
+    enddo
+    endif
+    if(size(grid%northwind)>1 .and. size(grid%eastwind)>1) then
+       do j=jstart,jend
+          do i=istart,iend
+             grid%northwind(i,j)=0
+             grid%eastwind(i,j)=0
+          enddo
+       enddo
+    endif
+
     grid%tg_interval_end=grid%tg_interval_start
     grid%tg_duration=0.0
+    grid%tg_want_reset=0
   end subroutine init_tg_vars
 
   subroutine init_tornado_genesis(grid,config_flags)
@@ -82,6 +106,7 @@ contains
     integer :: IMS,IME,JMS,JME,KMS,KME
     integer :: IPS,IPE,JPS,JPE,KPS,KPE
 
+    grid%tg_want_reset=0  ! to avoid needless calls to reset_tornado_genesis
     if(config_flags%tg_option/=tg_emc2014spc) return
 
     if(grid%hydro) then
@@ -99,10 +124,7 @@ contains
     call update_tg_time(grid,.true.)
   end subroutine init_tornado_genesis
 
-  subroutine reset_tornado_genesis(grid,config_flags,stream)
-    ! Called after writing output for a given stream.  Resets all
-    ! min/max information for all fields if the stream is the
-    ! tg_reset_stream.  
+  subroutine request_tg_reset(grid,config_flags,stream)
     use module_state_description, only: tg_emc2014spc
     use module_domain, only: domain, get_ijk_from_grid
     use module_configure, only : grid_config_rec_type
@@ -110,9 +132,6 @@ contains
     type(domain), intent(inout) :: grid
     type(grid_config_rec_type), intent(in) :: config_flags
     integer, intent(in) :: stream
-    integer :: IDS,IDE,JDS,JDE,KDS,KDE
-    integer :: IMS,IME,JMS,JME,KMS,KME
-    integer :: IPS,IPE,JPS,JPE,KPS,KPE
     character*255 :: message
     integer :: histnum
 
@@ -123,26 +142,87 @@ contains
 3012   format('Grid ',I2,': resetting tornado genesis data after stream ',I0,' output')
        write(message,3012) grid%id,histnum
        call wrf_message(trim(message))
-
-       CALL get_ijk_from_grid (  grid ,      &
-            ids, ide, jds, jde, kds, kde,    &
-            ims, ime, jms, jme, kms, kme,    &
-            ips, ipe, jps, jpe, kps, kpe    )
-       call init_tg_vars(grid,config_flags, &
-            ids, ide, jds, jde, kds, kde,   &
-            ims, ime, jms, jme, kms, kme,   &
-            ips, ipe, jps, jpe, kps, kpe    )
-
-       ! Previous interval end time is now this interval's start time
-       ! since we're entering the next interval:
-       grid%tg_interval_start=grid%tg_interval_end
-       grid%tg_duration=0.0 ! end=start, so interval length is 0
-    else
-3013   format('Grid ',I2,': NOT resetting tornado genesis data: stream ',I0,' is not reset stream ',I0)
-       write(message,3013) grid%id,histnum,config_flags%tg_reset_stream
-       call wrf_debug(1,trim(message))
+       grid%tg_want_reset=1
     endif
+  end subroutine request_tg_reset
+
+  subroutine reset_tornado_genesis(grid,config_flags)
+    ! Called after writing output for a given stream.  Resets all
+    ! min/max information for all fields if the stream is the
+    ! tg_reset_stream.  
+    use module_state_description, only: tg_emc2014spc
+    use module_domain, only: domain, get_ijk_from_grid
+    use module_configure, only : grid_config_rec_type
+    use module_io_domain, only: first_history
+    type(domain), intent(inout) :: grid
+    type(grid_config_rec_type), intent(in) :: config_flags
+    integer :: IDS,IDE,JDS,JDE,KDS,KDE
+    integer :: IMS,IME,JMS,JME,KMS,KME
+    integer :: IPS,IPE,JPS,JPE,KPS,KPE
+    character*255 :: message
+    integer :: histnum
+
+    if(config_flags%tg_option/=tg_emc2014spc) return
+    if(grid%tg_want_reset==0) return
+
+3012 format('Grid ',I2,': resetting tornado genesis data')
+    write(message,3012) grid%id
+    call wrf_message(trim(message))
+
+    CALL get_ijk_from_grid (  grid ,      &
+         ids, ide, jds, jde, kds, kde,    &
+         ims, ime, jms, jme, kms, kme,    &
+         ips, ipe, jps, jpe, kps, kpe    )
+
+    ! Previous interval end time is now this interval's start time
+    ! since we're entering the next interval:
+    grid%tg_interval_start=grid%tg_interval_end
+
+    call init_tg_vars(grid,config_flags, &
+         ids, ide, jds, jde, kds, kde,   &
+         ims, ime, jms, jme, kms, kme,   &
+         ips, ipe, jps, jpe, kps, kpe    )
   end subroutine reset_tornado_genesis
+
+  subroutine rotate_winds(grid,config_flags, &
+         ids, ide, jds, jde, kds, kde,   &
+         ims, ime, jms, jme, kms, kme,   &
+         ips, ipe, jps, jpe, kps, kpe    )
+    ! Rotate U10/V10 winds to earth-relative NORTHWIND/EASTWIND
+    use module_model_constants, only: DEGRAD
+    use module_domain, only: domain
+    use module_configure, only : grid_config_rec_type
+    type(domain), intent(inout) :: grid
+    type(grid_config_rec_type), intent(in) :: config_flags
+    integer, intent(in) :: IDS,IDE,JDS,JDE,KDS,KDE
+    integer, intent(in) :: IMS,IME,JMS,JME,KMS,KME
+    integer, intent(in) :: IPS,IPE,JPS,JPE,KPS,KPE
+    integer :: i,j
+    real :: cenlat,cenlon, lmbd0,phi0, cos_phi0,sin_phi0
+    real :: big_denom, relm, lat, lon, cos_alpha, sin_alpha
+
+    ! Get the projection center from the MOAD center:
+    call nl_get_cen_lat(1,cenlat)
+    call nl_get_cen_lon(1,cenlon)
+    if(cenlon<0) cenlon=cenlon+360.
+    lmbd0=cenlon*DEGRAD
+    phi0=cenlat*DEGRAD
+    
+    cos_phi0=cos(phi0)
+    sin_phi0=sin(phi0)
+    do j=max(jps,jds),min(jpe,jde-1)
+       do i=max(ips,ids),min(ipe,ide-1)
+          lon=grid%GLON(i,j)
+          lat=grid%GLAT(i,j)
+          relm=lon-lmbd0
+          big_denom=cos(asin( cos_phi0*sin(lat) - sin_phi0*cos(lat)*cos(relm) ))
+          sin_alpha=sin_phi0*sin(relm)/big_denom
+          cos_alpha=(cos_phi0*cos(lat)+sin_phi0*sin(lat)*cos(relm))/big_denom
+          grid%eastwind(i,j)   =  cos_alpha*grid%u10(i,j) + sin_alpha*grid%v10(i,j)
+          grid%northwind(i,j)  = -sin_alpha*grid%u10(i,j) + cos_alpha*grid%v10(i,j)
+       enddo
+    enddo
+  end subroutine rotate_winds
 
   subroutine calc_tornado_genesis(grid,config_flags)
     ! Updates max/min information for tornado genesis wind fields from
@@ -185,6 +265,23 @@ contains
 #ifdef DM_PARALLEL
 #    include "HALO_NMM_C.inc"
 #endif
+
+    if(size(grid%tlow)>1 .and. size(grid%zlow)>1) then
+       ! Near surface Z & T for wave model:
+       do j=max(jps,jds),min(jpe,jde-1)
+          do i=max(ips,ids),min(ipe,ide-1)
+             grid%tlow(i,j)=grid%T(i,j,kds)
+             grid%zlow(i,j)=(grid%Z(i,j,kds+1)-grid%Z(i,j,kds))/2
+          enddo
+       enddo
+    endif
+
+    if(size(grid%northwind)>1 .and. size(grid%eastwind)>1) then
+       call rotate_winds(grid,config_flags, &
+         ids, ide, jds, jde, kds, kde,   &
+         ims, ime, jms, jme, kms, kme,   &
+         ips, ipe, jps, jpe, kps, kpe    )
+    endif
 
     ! Maximum 10m wind vector magnitude:
     maxmaxwind=0.0
@@ -270,7 +367,7 @@ contains
        grid%tg_min_zhel_25(ids,jstart:jend)=grid%tg_min_zhel_25(ids+1,jstart:jend)
        grid%tg_min_zhel_03(ids,jstart:jend)=grid%tg_min_zhel_03(ids+1,jstart:jend)
        grid%tg_max_wwind(ids,jstart:jend)=grid%tg_max_wwind(ids+1,jstart:jend)
-       grid%tg_max_wwind(ids,jstart:jend)=grid%tg_max_wwind(ids+1,jstart:jend)
+       grid%tg_min_wwind(ids,jstart:jend)=grid%tg_min_wwind(ids+1,jstart:jend)
        grid%tg_max_m10wind(ids,jstart:jend)=grid%tg_max_m10wind(ids+1,jstart:jend)
     endif
 
@@ -280,7 +377,7 @@ contains
        grid%tg_min_zhel_25(ide-1,jstart:jend)=grid%tg_min_zhel_25(ide-2,jstart:jend)
        grid%tg_min_zhel_03(ide-1,jstart:jend)=grid%tg_min_zhel_03(ide-2,jstart:jend)
        grid%tg_max_wwind(ide-1,jstart:jend)=grid%tg_max_wwind(ide-2,jstart:jend)
-       grid%tg_max_wwind(ide-1,jstart:jend)=grid%tg_max_wwind(ide-2,jstart:jend)
+       grid%tg_min_wwind(ide-1,jstart:jend)=grid%tg_min_wwind(ide-2,jstart:jend)
        grid%tg_max_m10wind(ide-1,jstart:jend)=grid%tg_max_m10wind(ide-2,jstart:jend)
     endif
 
@@ -292,7 +389,7 @@ contains
        grid%tg_min_zhel_25(imin:imax,jds)=grid%tg_min_zhel_25(imin:imax,jds+1)
        grid%tg_min_zhel_03(imin:imax,jds)=grid%tg_min_zhel_03(imin:imax,jds+1)
        grid%tg_max_wwind(imin:imax,jds)=grid%tg_max_wwind(imin:imax,jds+1)
-       grid%tg_max_wwind(imin:imax,jds)=grid%tg_max_wwind(imin:imax,jds+1)
+       grid%tg_min_wwind(imin:imax,jds)=grid%tg_min_wwind(imin:imax,jds+1)
        grid%tg_max_m10wind(imin:imax,jds)=grid%tg_max_m10wind(imin:imax,jds+1)
     endif
 
@@ -302,7 +399,7 @@ contains
        grid%tg_min_zhel_25(imin:imax,jde-1)=grid%tg_min_zhel_25(imin:imax,jde-2)
        grid%tg_min_zhel_03(imin:imax,jde-1)=grid%tg_min_zhel_03(imin:imax,jde-2)
        grid%tg_max_wwind(imin:imax,jde-1)=grid%tg_max_wwind(imin:imax,jde-2)
-       grid%tg_max_wwind(imin:imax,jde-1)=grid%tg_max_wwind(imin:imax,jde-2)
+       grid%tg_min_wwind(imin:imax,jde-1)=grid%tg_min_wwind(imin:imax,jde-2)
        grid%tg_max_m10wind(imin:imax,jde-1)=grid%tg_max_m10wind(imin:imax,jde-2)
     endif
 
@@ -315,17 +412,17 @@ contains
 
 end module module_tornado_genesis
 
-subroutine nmm_reset_tornado_genesis(grid,config_flags,stream)
+subroutine nmm_request_tg_reset(grid,config_flags,stream)
   ! This subroutine is a wrapper kludge to work around the WRF build
   ! order and limitations of make.  The module_tornado_genesis module
   ! file does not exist when mediation_integrate is compiled, so
   ! med_hist_out has to call a non-module function instead.
   use module_domain, only: domain
-  use module_configure, only : grid_config_rec_type
-  use module_tornado_genesis
+  use module_configure, only : grid_config_rec_type 
+  use module_tornado_genesis, only: request_tg_reset
   implicit none
   integer, intent(in) :: stream
   type(domain), intent(inout) :: grid
   type(grid_config_rec_type), intent(in) :: config_flags
-  call reset_tornado_genesis(grid,config_flags,stream)
-end subroutine nmm_reset_tornado_genesis
+  call request_tg_reset(grid,config_flags,stream)
+end subroutine nmm_request_tg_reset

@@ -666,9 +666,9 @@ contains
     integer, intent(in) :: IPS,IPE,JPS,JPE,KPS,KPE
     integer i
     if(grid%tracker_havefix) then
-       print *,'in store old, have fix'
+       !print *,'in store old, have fix'
        if(grid%track_n_old>0) then
-          print *,'in store old, shifting old'
+          !print *,'in store old, shifting old'
           do i=1,grid%num_old_fixes-1
              grid%track_old_lon(i+1)=grid%track_old_lon(i)
              grid%track_old_lat(i+1)=grid%track_old_lat(i)
@@ -679,7 +679,7 @@ contains
        grid%track_old_lat(1)=grid%tracker_fixlat
        grid%track_old_ntsd(1)=grid%ntsd
        grid%track_n_old=min(grid%num_old_fixes,grid%track_n_old+1)
-       print *,'in store old, now have ',grid%track_n_old
+       !print *,'in store old, now have ',grid%track_n_old
     endif
   end subroutine store_old_fixes
 
@@ -787,12 +787,12 @@ contains
          abs(grid%tracker_fixlat),get_lat_ns(grid%tracker_fixlat), &
          abs(grid%tracker_fixlon),get_lon_ew(grid%tracker_fixlon), &
          grid%tracker_rmw*km2nmi
-    write(message,313) grid%dt*grid%ntsd,                 &
-         grid%tracker_vmax*mps2kn,grid%tracker_pmin/100.,          &
-         abs(grid%tracker_fixlat),get_lat_ns(grid%tracker_fixlat), &
-         abs(grid%tracker_fixlon),get_lon_ew(grid%tracker_fixlon), &
-         grid%tracker_rmw*km2nmi
-    call wrf_message(message)
+    ! write(message,313) grid%dt*grid%ntsd,                 &
+    !      grid%tracker_vmax*mps2kn,grid%tracker_pmin/100.,          &
+    !      abs(grid%tracker_fixlat),get_lat_ns(grid%tracker_fixlat), &
+    !      abs(grid%tracker_fixlon),get_lon_ew(grid%tracker_fixlon), &
+    !      grid%tracker_rmw*km2nmi
+    ! call wrf_message(message)
   end subroutine output_partial_atcfunix
 
   subroutine get_wind_pres_intensity(grid, &
@@ -923,10 +923,10 @@ contains
     dist = min(grid%tracker_edge_dist, max(50e3, 3e3*grid%tracker_rmw))
     distsq = dist * dist
 
-    print *,'motion search radius (m) = ',dist
-    print *,'  considered edge dist = ',grid%tracker_edge_dist
-    print *,'  considered 3e3*rmw = ',3e3*grid%tracker_rmw
-    print *,'  considered 50e3.'
+    ! print *,'motion search radius (m) = ',dist
+    ! print *,'  considered edge dist = ',grid%tracker_edge_dist
+    ! print *,'  considered 3e3*rmw = ',3e3*grid%tracker_rmw
+    ! print *,'  considered 50e3.'
 
     do j=jts,min(jte,jde-1)
        do i=its,min(ite,ide-1)
@@ -947,8 +947,8 @@ contains
     motion_grideast=e/count
     motion_gridnorth=n/count
 
-    print *,'e=',e,' n=',n,' count=',count
-    print *,'motion: east=',motion_grideast,' north=',motion_gridnorth
+    ! print *,'e=',e,' n=',n,' count=',count
+    ! print *,'motion: east=',motion_grideast,' north=',motion_gridnorth
   end subroutine mean_motion
 
   subroutine fixcenter(grid,icen,jcen,calcparm,loncen,latcen, &

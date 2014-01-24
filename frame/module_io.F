@@ -230,7 +230,8 @@ SUBROUTINE wrf_open_for_write_begin( FileName , Comm_compute, Comm_io, SysDepInf
   INTEGER                     :: io_form
   INTEGER                     :: Hndl
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files
+  LOGICAL, EXTERNAL :: use_output_servers_for
   CHARACTER*128     :: LocFilename   ! for appending the process ID if necessary
   INTEGER           :: myproc
   CHARACTER*128     :: mess
@@ -246,7 +247,7 @@ SUBROUTINE wrf_open_for_write_begin( FileName , Comm_compute, Comm_io, SysDepInf
 
   Status = 0
   Hndl = -1
-  IF ( multi_files( io_form ) .OR. .NOT. use_output_servers() ) THEN
+  IF ( .not. use_output_servers_for(io_form) ) THEN
     SELECT CASE ( use_package(io_form) )
 #ifdef NETCDF
       CASE ( IO_NETCDF   )
@@ -402,13 +403,11 @@ SUBROUTINE wrf_open_for_write_begin( FileName , Comm_compute, Comm_io, SysDepInf
           Status = WRF_FILE_NOT_OPENED
         ENDIF
     END SELECT
-  ELSE IF ( use_output_servers() ) THEN
+  ELSE ! use_output_servers_for(io_form)
     IF ( io_form .GT. 0 ) THEN
       CALL wrf_quilt_open_for_write_begin ( FileName , Comm_compute, Comm_io, SysDepInfo, &
                                             Hndl , io_form, Status )
     ENDIF
-  ELSE
-    Status = 0
   ENDIF
   CALL add_new_handle( Hndl, io_form, .TRUE., DataHandle )
 END SUBROUTINE wrf_open_for_write_begin
@@ -433,7 +432,7 @@ SUBROUTINE wrf_open_for_write_commit( DataHandle , Status )
   INTEGER                     :: Hndl
   LOGICAL                     :: for_out
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
 #include "wrf_io_flags.h"
 
   CALL wrf_debug( DEBUG_LVL, 'module_io.F: in wrf_open_for_write_commit' )
@@ -442,7 +441,7 @@ SUBROUTINE wrf_open_for_write_commit( DataHandle , Status )
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   CALL set_first_operation( DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package(io_form) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -513,7 +512,7 @@ SUBROUTINE wrf_open_for_write_commit( DataHandle , Status )
         CASE DEFAULT
           Status = 0
       END SELECT
-    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers() ) THEN
+    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers_for(io_form) ) THEN
       CALL wrf_quilt_open_for_write_commit ( Hndl , Status )
     ELSE
       Status = 0
@@ -548,7 +547,7 @@ SUBROUTINE wrf_open_for_read_begin( FileName , Comm_compute, Comm_io, SysDepInfo
   INTEGER                     :: Hndl
   LOGICAL                     :: also_for_out
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
 
   CHARACTER*128     :: LocFilename   ! for appending the process ID if necessary
   INTEGER     myproc
@@ -564,7 +563,7 @@ SUBROUTINE wrf_open_for_read_begin( FileName , Comm_compute, Comm_io, SysDepInfo
   Status = 0
   Hndl = -1
   also_for_out = .FALSE.
-!  IF ( .NOT. use_output_servers() ) THEN
+!  IF ( .NOT. use_output_servers_for(io_form) ) THEN
     SELECT CASE ( use_package(io_form) )
 #ifdef NETCDF
       CASE ( IO_NETCDF   )
@@ -693,7 +692,7 @@ SUBROUTINE wrf_open_for_read_commit( DataHandle , Status )
   INTEGER                     :: Hndl
   LOGICAL                     :: for_out
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
 #include "wrf_io_flags.h"
 
   CALL wrf_debug( DEBUG_LVL, 'module_io.F: in wrf_open_for_read_commit' )
@@ -702,7 +701,7 @@ SUBROUTINE wrf_open_for_read_commit( DataHandle , Status )
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   CALL set_first_operation( DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF ( .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package(io_form) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -782,7 +781,7 @@ SUBROUTINE wrf_open_for_read ( FileName , Comm_compute, Comm_io, SysDepInfo, &
   INTEGER                     :: io_form, myproc
   INTEGER                     :: Hndl
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
 
   CALL wrf_debug( DEBUG_LVL, 'module_io.F: in wrf_open_for_read' )
 
@@ -925,7 +924,7 @@ SUBROUTINE wrf_inquire_opened ( DataHandle, FileName , FileStatus, Status )
   INTEGER ,       INTENT(OUT) :: Status
   LOGICAL                     :: for_out
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
 #include "wrf_io_flags.h"
 #include "wrf_status_codes.h"
 
@@ -936,7 +935,7 @@ SUBROUTINE wrf_inquire_opened ( DataHandle, FileName , FileStatus, Status )
   Status = 0
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package(io_form) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -994,7 +993,7 @@ SUBROUTINE wrf_inquire_opened ( DataHandle, FileName , FileStatus, Status )
           FileStatus = WRF_FILE_NOT_OPENED
           Status = 0
       END SELECT
-    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers() ) THEN
+    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers_for(io_form) ) THEN
       CALL wrf_quilt_inquire_opened ( Hndl, FileName , FileStatus, Status )
     ENDIF
   ELSE
@@ -1021,7 +1020,7 @@ SUBROUTINE wrf_inquire_filename ( DataHandle, FileName , FileStatus, Status )
   INTEGER ,       INTENT(OUT) :: Status
 #include "wrf_status_codes.h"
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
   LOGICAL                     :: for_out
 
   INTEGER io_form , Hndl
@@ -1032,7 +1031,7 @@ SUBROUTINE wrf_inquire_filename ( DataHandle, FileName , FileStatus, Status )
   Status = 0
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package( io_form ) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -1097,7 +1096,7 @@ SUBROUTINE wrf_inquire_filename ( DataHandle, FileName , FileStatus, Status )
         CASE DEFAULT
           Status = 0
       END SELECT
-    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers() ) THEN
+    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers_for(io_form) ) THEN
       CALL wrf_quilt_inquire_filename ( Hndl, FileName , FileStatus, Status )
     ENDIF
   ELSE
@@ -1121,7 +1120,7 @@ SUBROUTINE wrf_iosync ( DataHandle, Status )
   INTEGER ,       INTENT(OUT) :: Status
 #include "wrf_status_codes.h"
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
   LOGICAL                     :: for_out
 
   INTEGER io_form , Hndl
@@ -1131,7 +1130,7 @@ SUBROUTINE wrf_iosync ( DataHandle, Status )
   Status = 0
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package(io_form) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -1174,7 +1173,7 @@ SUBROUTINE wrf_iosync ( DataHandle, Status )
         CASE DEFAULT
           Status = 0
       END SELECT
-    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers() ) THEN
+    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers_for(io_form) ) THEN
       CALL wrf_quilt_iosync( Hndl, Status )
     ELSE
       Status = 0
@@ -1199,7 +1198,7 @@ SUBROUTINE wrf_ioclose ( DataHandle, Status )
   INTEGER ,       INTENT(OUT) :: Status
 #include "wrf_status_codes.h"
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
   INTEGER io_form , Hndl
   LOGICAL                     :: for_out
 
@@ -1209,7 +1208,7 @@ SUBROUTINE wrf_ioclose ( DataHandle, Status )
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   CALL free_handle( DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package(io_form) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -1268,7 +1267,7 @@ SUBROUTINE wrf_ioclose ( DataHandle, Status )
         CASE DEFAULT
           Status = 0
       END SELECT
-    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers() ) THEN
+    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers_for(io_form) ) THEN
       CALL wrf_quilt_ioclose( Hndl, Status )
     ELSE
       Status = 0
@@ -1295,7 +1294,7 @@ SUBROUTINE wrf_get_next_time ( DataHandle, DateStr, Status )
 #include "wrf_status_codes.h"
 
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
   INTEGER io_form , Hndl, len_of_str
   LOGICAL                     :: for_out
 
@@ -1304,7 +1303,7 @@ SUBROUTINE wrf_get_next_time ( DataHandle, DateStr, Status )
   Status = 0
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package(io_form) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -1370,7 +1369,7 @@ SUBROUTINE wrf_get_next_time ( DataHandle, DateStr, Status )
         CASE DEFAULT
           Status = 0
       END SELECT
-    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers() ) THEN
+    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers_for(io_form) ) THEN
       CALL wrf_quilt_get_next_time( Hndl, DateStr, Status )
     ELSE
       Status = 0
@@ -1397,7 +1396,7 @@ SUBROUTINE wrf_get_previous_time ( DataHandle, DateStr, Status )
 #include "wrf_status_codes.h"
 
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
   INTEGER io_form , Hndl, len_of_str
   LOGICAL                     :: for_out
 
@@ -1406,7 +1405,7 @@ SUBROUTINE wrf_get_previous_time ( DataHandle, DateStr, Status )
   Status = 0
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package(io_form) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -1465,7 +1464,7 @@ SUBROUTINE wrf_get_previous_time ( DataHandle, DateStr, Status )
         CASE DEFAULT
           Status = 0
       END SELECT
-    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers() ) THEN
+    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers_for(io_form) ) THEN
       CALL wrf_quilt_get_previous_time( Hndl, DateStr, Status )
     ELSE
       Status = 0
@@ -1492,7 +1491,7 @@ SUBROUTINE wrf_set_time ( DataHandle, DateStr, Status )
 #include "wrf_status_codes.h"
 
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
   INTEGER io_form , Hndl
   LOGICAL                     :: for_out
 
@@ -1501,7 +1500,7 @@ SUBROUTINE wrf_set_time ( DataHandle, DateStr, Status )
   Status = 0
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package( io_form ) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -1547,7 +1546,7 @@ SUBROUTINE wrf_set_time ( DataHandle, DateStr, Status )
         CASE DEFAULT
           Status = 0
       END SELECT
-    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers() ) THEN
+    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers_for(io_form) ) THEN
       CALL wrf_quilt_set_time( Hndl, DateStr, Status )
     ELSE
       Status = 0
@@ -1575,7 +1574,7 @@ SUBROUTINE wrf_get_next_var ( DataHandle, VarName, Status )
 #include "wrf_status_codes.h"
 
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
   INTEGER io_form , Hndl
   LOGICAL                     :: for_out
 
@@ -1584,7 +1583,7 @@ SUBROUTINE wrf_get_next_var ( DataHandle, VarName, Status )
   Status = 0
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF ( multi_files( io_form ) .OR. .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package( io_form ) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -1622,7 +1621,7 @@ SUBROUTINE wrf_get_next_var ( DataHandle, VarName, Status )
         CASE DEFAULT
           Status = 0
       END SELECT
-    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers() ) THEN
+    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers_for(io_form) ) THEN
       CALL wrf_quilt_get_next_var( Hndl, VarName, Status )
     ELSE
       Status = 0
@@ -1657,14 +1656,14 @@ SUBROUTINE wrf_get_var_info ( DataHandle , VarName , NDim , MemoryOrder , Stagge
   INTEGER io_form , Hndl
   LOGICAL                     :: for_out
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers_for
 
   CALL wrf_debug( DEBUG_LVL, 'module_io.F: in wrf_get_var_info' )
 
   Status = 0
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF (( multi_files(io_form) .OR.  wrf_dm_on_monitor() ) .AND. .NOT. (for_out .AND. use_output_servers()) ) THEN
+    IF (( multi_files(io_form) .OR.  wrf_dm_on_monitor() ) .AND. .NOT. (for_out .AND. use_output_servers_for(io_form)) ) THEN
       SELECT CASE ( use_package( io_form ) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -1718,7 +1717,7 @@ SUBROUTINE wrf_get_var_info ( DataHandle , VarName , NDim , MemoryOrder , Stagge
         CASE DEFAULT
           Status = 0
       END SELECT
-    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers() ) THEN
+    ELSE IF ( io_form .GT. 0 .AND. for_out .AND. use_output_servers_for(io_form) ) THEN
       CALL wrf_quilt_get_var_info ( Hndl , VarName , NDim ,            &
                                     MemoryOrder , Stagger ,                  &
                                     DomainStart , DomainEnd ,                &
@@ -2062,7 +2061,7 @@ SUBROUTINE wrf_read_field1 ( DataHandle , DateStr , VarName , Field , FieldType 
   INTEGER io_form , Hndl
   LOGICAL                     :: for_out
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers, use_input_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers, use_input_servers, use_output_servers_for
 #ifdef NETCDF
   EXTERNAL     ext_ncd_read_field
 #endif
@@ -2312,7 +2311,7 @@ SUBROUTINE wrf_write_field1 ( DataHandle , DateStr , VarName , Field , FieldType
   CHARACTER*3 MemOrd
   LOGICAL                     :: for_out, okay_to_call
   INTEGER, EXTERNAL           :: use_package
-  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers
+  LOGICAL, EXTERNAL           :: wrf_dm_on_monitor, multi_files, use_output_servers, use_output_servers_for
 #ifdef NETCDF
   EXTERNAL     ext_ncd_write_field
 #endif
@@ -2347,7 +2346,7 @@ SUBROUTINE wrf_write_field1 ( DataHandle , DateStr , VarName , Field , FieldType
   CALL get_handle ( Hndl, io_form , for_out, DataHandle )
   CALL reset_first_operation ( DataHandle )
   IF ( Hndl .GT. -1 ) THEN
-    IF ( multi_files( io_form ) .OR. .NOT. use_output_servers() ) THEN
+    IF ( multi_files( io_form ) .OR. .NOT. use_output_servers_for(io_form) ) THEN
       SELECT CASE ( use_package( io_form ) )
 #ifdef NETCDF
         CASE ( IO_NETCDF   )
@@ -2473,7 +2472,7 @@ SUBROUTINE wrf_write_field1 ( DataHandle , DateStr , VarName , Field , FieldType
         CASE DEFAULT
           Status = 0
       END SELECT
-    ELSE IF ( use_output_servers() ) THEN
+    ELSE IF ( use_output_servers_for(io_form) ) THEN
       IF ( io_form .GT. 0 ) THEN
       CALL wrf_quilt_write_field ( Hndl , DateStr , VarName , Field , FieldType , Comm , IOComm , &
                                    DomainDesc , MemoryOrder , Stagger , DimNames ,              &
@@ -2556,12 +2555,16 @@ LOGICAL FUNCTION multi_files ( io_form )
 ! of tasks that were used to write it.  This feature can be useful for 
 ! speeding up restarts on machines that support efficient parallel I/O.  
 ! Multi-file formats cannot be used with I/O quilt servers.  
+!
+! Note: multi-file is selected by adding 100 to the standard WRF I/O
+! form.  If you add 200 instead, then single-file I/O is still done,
+! but without I/O servers.
 !</PRE>
 !</DESCRIPTION>
   IMPLICIT NONE
   INTEGER, INTENT(IN) :: io_form
 #ifdef DM_PARALLEL
-  multi_files = io_form > 99
+  multi_files = ( io_form >= 100 .and. io_form<200 )
 #else
   multi_files = .FALSE.
 #endif

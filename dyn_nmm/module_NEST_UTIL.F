@@ -316,7 +316,7 @@ END  SUBROUTINE NESTBC_PATCH
 !----------------------------------------------------------------------------------
 SUBROUTINE MSLP_DIAG (MSLP,PINT,T,Q               &
                      ,FIS,PD,DETA1,DETA2,PDTOP    &
-                     ,IDS,IDE,JDS,JDE,KDS,KDE     &
+                     ,IDS,IDF,JDS,JDF,KDS,KDE     &
                      ,IMS,IME,JMS,JME,KMS,KME     &
                      ,ITS,ITE,JTS,JTE,KTS,KTE     )
 
@@ -329,8 +329,13 @@ SUBROUTINE MSLP_DIAG (MSLP,PINT,T,Q               &
 !
 ! ABSTRACT:
 !         THIS ROUTINE COMPUTES MSLP OVER THE PARENT DOMAIN FOR DIAGONOSTIC PURPOSE 
+!
+! Note: domain I & J end bounds are NOT the usual bounds.  They are
+! IDE-1 and JDE-1.
+!
 ! PROGRAM HISTORY LOG:
 !   07-21-2005  : gopal
+!   01-23-2012  : sam: removed 3D Z calculation, updated comments
 !
 ! USAGE: CALL MSLP_DIAG FROM THE SOLVER 
 !
@@ -346,7 +351,7 @@ SUBROUTINE MSLP_DIAG (MSLP,PINT,T,Q               &
 
 !     global variables
 
-      INTEGER,INTENT(IN)                                      :: IDS,IDE,JDS,JDE,KDS,KDE   &
+      INTEGER,INTENT(IN)                                      :: IDS,IDF,JDS,JDF,KDS,KDE   &
                                                                 ,IMS,IME,JMS,JME,KMS,KME   & 
                                                                 ,ITS,ITE,JTS,JTE,KTS,KTE   
 
@@ -367,8 +372,8 @@ SUBROUTINE MSLP_DIAG (MSLP,PINT,T,Q               &
 
      MSLP=-9999.99
      K=1
-     DO J = JTS, MIN(JTE,JDE)
-       DO I = ITS, MIN(ITE,IDE)
+     DO J = JTS, MIN(JTE,JDF)
+       DO I = ITS, MIN(ITE,IDF)
          Z1 = FIS(I,J)*GI
          APELP      = (PINT(I,J,K+1)+PINT(I,J,K))
          RTOPP      = TRG*T(I,J,K)*(1.0+Q(I,J,K)*P608)/APELP
@@ -382,6 +387,49 @@ SUBROUTINE MSLP_DIAG (MSLP,PINT,T,Q               &
      ENDDO
 
 END SUBROUTINE MSLP_DIAG
+!------------------------------------------------------------------------------------------------------
+SUBROUTINE CALC_BEST_MSLP(BEST_MSLP,MSLP,MEMBRANE_MSLP,FIS &
+                         ,IDS,IDE,JDS,JDE,KDS,KDE     &
+                         ,IMS,IME,JMS,JME,KMS,KME     &
+                         ,ITS,ITE,JTS,JTE,KTS,KTE     )
+  ! Author: Sam Trahan, January 2014
+
+  ! Calculates a "best estimate" BEST_MSLP from the low-quality MSLP
+  ! (updated every timestep) and high-quality MEMBRANE_MSLP (updated
+  ! infrequently).  The MSLP is generally bad over high or sharp
+  ! terrain.
+  ! Cases:
+  !   invalid membrane_mslp: use mslp (leading edge of nest after move)
+  !   height>200m: use membrane_mslp, which is better over terrain
+  !   height<=0m:  use mslp, which should be identical to membrane_mslp here
+  !   0<height<200m: linearly interpolate between mslp at 0m and
+  !                  membrane_mslp at 200m to allow a smooth transition
+  use module_model_constants, only: g
+  integer, intent(in) :: IDS,IDE,JDS,JDE,KDS,KDE     &
+                        ,IMS,IME,JMS,JME,KMS,KME     &
+                        ,ITS,ITE,JTS,JTE,KTS,KTE
+  real, dimension(ims:ime,jms:jme), intent(in) :: MSLP,MEMBRANE_MSLP,FIS
+  real, dimension(ims:ime,jms:jme), intent(out) :: BEST_MSLP
+  integer :: i,j
+  real :: z,w
+  real, parameter :: gi=1./g
+  
+  do j=max(jts,jds), min(jte,jde-1)
+     do i=max(its,ids), min(ite,ide-1)
+        if(membrane_mslp(i,j)<7e4) then
+           best_mslp(i,j)=mslp(i,j)
+        else
+           z=fis(i,j)*gi
+           if(z<200.) then
+              w=max(0.,z)/200.
+              best_mslp(i,j)=membrane_mslp(i,j)*w+mslp(i,j)*(1-w)
+           else
+              best_mslp(i,j)=membrane_mslp(i,j)
+           endif
+        endif
+     enddo
+  enddo
+END SUBROUTINE CALC_BEST_MSLP
 !------------------------------------------------------------------------------------------------------
 
 END  MODULE module_NEST_UTIL

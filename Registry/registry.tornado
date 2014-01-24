@@ -17,13 +17,22 @@ state  real tg_total_precip   ij dyn_nmm 1 f rh0123u=(UpCopy)d=(DownCopy) "TG_TO
 state  real tg_interval_start -  dyn_nmm 1 - rh0123                     "TG_INTERVAL_START" "Start of interval, in seconds since analysis time" "s"
 state  real tg_interval_end   -  dyn_nmm 1 - rh0123                       "TG_INTERVAL_END" "End of interval, in seconds since analysis time" "s"
 state  real tg_duration       -  dyn_nmm 1 - rh0123                           "TG_DURATION" "Duration of accumulation interval in seconds" "s"
+state  integer tg_want_reset  -  dyn_nmm 1 - r                             "TG_WANT_RESET" "Flag: 1=reset tg vars on next timestep" ""
+
+# Not really tornado genesis stuff, but it is in here because it is
+# really only needed when the tornado stuff is turned on:
+state  real   tlow      ij     dyn_nmm     1      -      h1       "TLOW"    "Near-surface sensible air temperature"   "K"
+state  real   zlow      ij     dyn_nmm     1      -      h1       "ZLOW"    "Near-surface altitude"   "m"
+state  real   northwind ij     dyn_nmm     1      -      h1       "NORTHWIND" "Earth-relative horizontal wind at 10m altitude: positive North" "m s-1"
+state  real   eastwind  ij     dyn_nmm     1      -      h1       "EASTWIND" "Earth-relative horizontal wind at 10m altitude: positive East" "m s-1"
+
 # --------------------------- namelist config ----------------------------
 rconfig integer tg_reset_stream  namelist,time_control 1      0 rh0123    "TG_RESET_STREAM" "Stream number of history stream that resets Tornado Genesis products" ""
 rconfig integer tg_option        namelist,physics      1      0 rh0123          "TG_OPTION" "Tornado Genesis products flag: 1=Enable, 0=Disable" ""
 rconfig integer ntornado         namelist,physics max_domains 1 rh0123           "NTORNADO" "Number of dynamics timesteps between updates of tg_ vars" ""
 #------------------------------- tg option -------------------------------
 package  tg_none         tg_option==0   -   -
-package  tg_emc2014spc   tg_option==1   -   state:tg_max_m10wind,tg_max_wwind,tg_min_wwind,tg_max_zhel_25,tg_min_zhel_25,tg_max_zhel_03,tg_min_zhel_03,tg_interval_start,tg_interval_end,tg_duration,tg_total_precip
+package  tg_emc2014spc   tg_option==1   -   state:tg_max_m10wind,tg_max_wwind,tg_min_wwind,tg_max_zhel_25,tg_min_zhel_25,tg_max_zhel_03,tg_min_zhel_03,tg_interval_start,tg_interval_end,tg_duration,tg_total_precip,tlow,zlow,northwind,eastwind
 #--------------------------------- halos ---------------------------------
 # Before forcing:
 halo HALO_NMM_TORNADO dyn_nmm 24:tg_max_m10wind,tg_max_wwind,tg_min_wwind,tg_max_zhel_25,tg_min_zhel_25,tg_max_zhel_03,tg_min_zhel_03,tg_total_precip
