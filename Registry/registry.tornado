@@ -17,14 +17,15 @@ state  real tg_total_precip   ij dyn_nmm 1 f rh0123u=(UpCopy)d=(DownCopy) "TG_TO
 state  real tg_interval_start -  dyn_nmm 1 - rh0123                     "TG_INTERVAL_START" "Start of interval, in seconds since analysis time" "s"
 state  real tg_interval_end   -  dyn_nmm 1 - rh0123                       "TG_INTERVAL_END" "End of interval, in seconds since analysis time" "s"
 state  real tg_duration       -  dyn_nmm 1 - rh0123                           "TG_DURATION" "Duration of accumulation interval in seconds" "s"
-state  integer tg_want_reset  -  dyn_nmm 1 - r                             "TG_WANT_RESET" "Flag: 1=reset tg vars on next timestep" ""
+state  integer tg_want_reset  -  dyn_nmm 1 - r                              "TG_WANT_RESET" "Flag: 1=reset tg vars on next timestep" ""
 
 # Not really tornado genesis stuff, but it is in here because it is
 # really only needed when the tornado stuff is turned on:
-state  real   tlow      ij     dyn_nmm     1      -      h1       "TLOW"    "Near-surface sensible air temperature"   "K"
-state  real   zlow      ij     dyn_nmm     1      -      h1       "ZLOW"    "Near-surface altitude"   "m"
+state  real   tlow      ij     dyn_nmm     1      -      h1       "TLOW"      "Near-surface sensible air temperature"   "K"
+state  real   zlow      ij     dyn_nmm     1      -      h1       "ZLOW"      "Near-surface altitude"   "m"
 state  real   northwind ij     dyn_nmm     1      -      h1       "NORTHWIND" "Earth-relative horizontal wind at 10m altitude: positive North" "m s-1"
-state  real   eastwind  ij     dyn_nmm     1      -      h1       "EASTWIND" "Earth-relative horizontal wind at 10m altitude: positive East" "m s-1"
+state  real   eastwind  ij     dyn_nmm     1      -      h1       "EASTWIND"  "Earth-relative horizontal wind at 10m altitude: positive East" "m s-1"
+state  real   rotangle  ij     dyn_nmm     1      -      h1       "ROTANGLE"  "Wind rotation angle from grid to earth" "radians"
 
 # --------------------------- namelist config ----------------------------
 rconfig integer tg_reset_stream  namelist,time_control 1      0 rh0123    "TG_RESET_STREAM" "Stream number of history stream that resets Tornado Genesis products" ""

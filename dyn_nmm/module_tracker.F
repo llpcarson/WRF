@@ -1716,7 +1716,7 @@ contains
     grid%tracker_edge_dist=sqrt(mindistsq)
 
 17  format('Min distance from lon=',F9.3,', lat=',F9.3,' to center is ',F19.3)
-    print *,'Min distance from edge to center is ',grid%tracker_edge_dist
+    !print *,'Min distance from edge to center is ',grid%tracker_edge_dist
     write(message,17) clonr, clatr, grid%tracker_edge_dist
     call wrf_message(message)
   end subroutine get_tracker_distsq

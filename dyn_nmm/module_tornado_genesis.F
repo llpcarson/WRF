@@ -220,6 +220,7 @@ contains
           cos_alpha=(cos_phi0*cos(lat)+sin_phi0*sin(lat)*cos(relm))/big_denom
           grid%eastwind(i,j)   =  cos_alpha*grid%u10(i,j) + sin_alpha*grid%v10(i,j)
           grid%northwind(i,j)  = -sin_alpha*grid%u10(i,j) + cos_alpha*grid%v10(i,j)
+          grid%rotangle(i,j) = atan2(sin_alpha,cos_alpha)
        enddo
     enddo
   end subroutine rotate_winds
