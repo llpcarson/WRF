@@ -136,12 +136,16 @@
         ENDDO    !-- I
       ENDDO      !-- J
       IF (.NOT.RESTRT) THEN
-!-- Convert from radians to degrees for WRF input files only
-        DO J=JTS,JTE
-          DO I=ITS,ITE
-            HANGL(I,J)=DTR*HANGL(I,J)  !-- convert to degrees (+/-90 deg)
-          ENDDO    !-- I
-        ENDDO      !-- J
+!-- Convert from radians to degrees for WRF input files only.
+!   There should have ano further conversion from rad to degree at this
+!   point since HANGL read from wrfinput_d01 already in degree even in
+!   the non restart mode... Chanh
+!
+!        DO J=JTS,JTE
+!          DO I=ITS,ITE
+!            HANGL(I,J)=DTR*HANGL(I,J)  !-- convert to degrees (+/-90 deg)
+!          ENDDO    !-- I
+!        ENDDO      !-- J
       ENDIF
 !dbg
 !dbg dumin=-1.
