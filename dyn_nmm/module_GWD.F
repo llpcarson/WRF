@@ -1761,7 +1761,7 @@ if (lprnt) print *,'Ktrial,iwklm(i),kreflm(i)=',Ktrial,iwklm(i),kreflm(I)
           DTAUY      = TAUD(I,K) * YN(I)
 ! ---  lm mb (*j*)  changes overwrite GWD
           if ( K .lt. IDXZB(I) .AND. IDXZB(I) .ne. 0 ) then
-            DBIM = DB(I,K) / (1.+DB(I,K)*DELTIM)
+            DBIM = DB(I,K) / (1.+ abs(DB(I,K))*DELTIM)
             A(J,K)  = - DBIM * V1(J,K) + A(J,K)
             B(J,K)  = - DBIM * U1(J,K) + B(J,K)
             DUsfc(J)   = DUsfc(J) - DBIM * V1(J,K) * DEL(J,K)
