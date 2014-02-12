@@ -1560,6 +1560,8 @@ package   wdm5scheme    mp_physics==14               -             moist:qv,qc,q
 package   wdm6scheme    mp_physics==16               -             moist:qv,qc,qr,qi,qs,qg;scalar:qnn,qnc,qnr
 package   mp_hwrf_advect  mp_physics==75             -             moist:qv,qc,qr,qi;scalar:qrimef
 package   etamp_hwrf    mp_physics==85               -             moist:qv,qc,qr,qi,qs;state:f_ice,f_rain,f_rimef
+package   mp_hwrf_advect_v2  mp_physics==752         -             moist:qv,qc,qr,qi;scalar:qrimef
+package   etamp_hwrf_v2    mp_physics==852           -             moist:qv,qc,qr,qi,qs;state:f_ice,f_rain,f_rimef
 package   etampold      mp_physics==95               -             moist:qv,qc,qr,qs;state:f_ice,f_rain,f_rimef
 
 package   nodfimoist        mp_physics_dfi==-1       -             -
