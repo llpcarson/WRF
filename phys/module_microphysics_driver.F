@@ -77,6 +77,7 @@ SUBROUTINE microphysics_driver(                                          &
                      KESSLERSCHEME, LINSCHEME, SBU_YLINSCHEME, WSM3SCHEME, WSM5SCHEME    &
                     ,WSM6SCHEME, ETAMPNEW, ETAMPOLD, etamp_HWRF,THOMPSON, MORR_TWO_MOMENT     &
                     ,GSFCGCESCHEME, WDM5SCHEME, WDM6SCHEME, MP_HWRF_ADVECT &
+                    , etamp_HWRF_v2,MP_HWRF_ADVECT_v2    &
                     ,MILBRANDT2MOM !,MILBRANDT3MOM 
 #else
    USE module_state_description, ONLY :                                  &
@@ -121,6 +122,7 @@ SUBROUTINE microphysics_driver(                                          &
 #endif
 
    USE module_mp_HWRF, only: ETAMP_NEW_HWRF,ETAMP_NEW_HWRF_advect
+   USE module_mp_HWRFnew, only: ETAMP_NEW_HWRF_V2,ETAMP_NEW_HWRF_advect_V2
    USE module_mixactivate, only: prescribe_aerosol_mixactivate
 
 ! For checking model timestep is history time (for radar reflectivity)
@@ -1393,6 +1395,32 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
              ELSE
                 CALL wrf_error_fatal ( 'arguments not present for calling etampnew' )
              ENDIF
+        CASE (ETAMP_HWRF_V2)
+             CALL wrf_debug ( 100 , 'microphysics_driver: calling etampnew_HWRF_V2')
+
+             IF ( PRESENT( qv_curr ) .AND. PRESENT( qt_curr ) .AND. &
+                  PRESENT( RAINNC  ) .AND. PRESENT ( RAINNCV ) .AND.  &
+                  PRESENT( mp_restart_state )                  .AND. &
+                  PRESENT( tbpvs_state )                      .AND. &
+                  PRESENT( tbpvs0_state )                       ) THEN
+
+               CALL ETAMP_NEW_HWRF_V2(                                &
+                  ITIMESTEP=itimestep,DT=dt,DX=dx,DY=dy, GID=id &
+                 ,RAINNC=rainnc,RAINNCV=rainncv                     &
+                 ,DZ8W=dz8w,RHO_PHY=rho,P_PHY=p,PI_PHY=pi_phy,TH_PHY=th &
+                 ,QV=qv_curr                                        &
+                 ,QT=qt_curr                                        &
+                 ,LOWLYR=LOWLYR,SR=SR                               &
+                 ,F_ICE_PHY=F_ICE_PHY,F_RAIN_PHY=F_RAIN_PHY         &
+                 ,F_RIMEF_PHY=F_RIMEF_PHY                           &
+                 ,QC=qc_curr,QR=Qr_curr,QI=Qi_curr                  &
+                 ,IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde &
+                 ,IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme &
+                 ,ITS=its,ITE=ite, JTS=jts,JTE=jte, KTS=kts,KTE=kte &
+                                                                    )
+             ELSE
+                CALL wrf_error_fatal ( 'arguments not present for calling etampnew_HWRF_v2' )
+             ENDIF
         CASE (MP_HWRF_ADVECT)
              CALL wrf_debug ( 100 , 'microphysics_driver: calling etampnew_HWRF_advect')
 
@@ -1418,6 +1446,32 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                                                                     )
              ELSE
                 CALL wrf_error_fatal ( 'arguments not present for calling ETAMP_NEW_HWRF_advect' )
+             ENDIF
+        CASE (MP_HWRF_ADVECT_V2)
+             CALL wrf_debug ( 100 , 'microphysics_driver: calling etampnew_HWRF_advect_v2')
+
+             IF ( PRESENT( qv_curr ) .AND. PRESENT( qt_curr ) .AND. &
+                  PRESENT( qi_curr ) .AND. PRESENT( qrimef_curr ) .AND. &
+                  PRESENT( qc_curr ) .AND. PRESENT( qr_curr ) .AND. &
+                  PRESENT( RAINNC  ) .AND. PRESENT ( RAINNCV ) .AND.  &
+                  PRESENT( mp_restart_state )                  .AND. &
+                  PRESENT( tbpvs_state )                      .AND. &
+                  PRESENT( tbpvs0_state )                       ) THEN
+
+               CALL ETAMP_NEW_HWRF_advect_v2(                       &
+                  ITIMESTEP=itimestep,DT=dt,DX=dx,DY=dy, GID=id &
+                 ,RAINNC=rainnc,RAINNCV=rainncv                     &
+                 ,DZ8W=dz8w,RHO_PHY=rho,P_PHY=p,PI_PHY=pi_phy,TH_PHY=th &
+                 ,QV=qv_curr                                        &
+                 ,QT=qt_curr                                        &
+                 ,LOWLYR=LOWLYR,SR=SR                               &
+                 ,QC=qc_curr,QR=Qr_curr,QI=Qi_curr,QRIMEF=Qrimef_curr &
+                 ,IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde &
+                 ,IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme &
+                 ,ITS=its,ITE=ite, JTS=jts,JTE=jte, KTS=kts,KTE=kte &
+                                                                    )
+             ELSE
+                CALL wrf_error_fatal ( 'arguments not present for calling ETAMP_NEW_HWRF_advect_v2' )
              ENDIF
 #endif
         CASE (ETAMPNEW)    !-- Operational 4-km High-Resolution Window (HRW) version

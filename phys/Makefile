@@ -74,6 +74,7 @@ MODULES = \
 	module_mp_etanew.o \
         module_mp_etaold.o \
 	module_mp_HWRF.o \
+	module_mp_HWRFnew.o \
 	module_mp_thompson.o \
 	module_mp_gsfcgce.o \
 	module_mp_morr_two_moment.o \
