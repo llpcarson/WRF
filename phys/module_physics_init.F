@@ -2937,6 +2937,7 @@ integer myproc
    USE module_mp_etaold
 #if (NMM_CORE == 1)
    USE module_mp_HWRF, only: etanewinit_HWRF
+   USE module_mp_HWRFnew, only: etanewinit_HWRF_v2
 #endif
    USE module_mp_thompson
    USE module_mp_morr_two_moment
@@ -3035,8 +3036,21 @@ integer myproc
                           ims, ime, jms, jme, kms, kme,           &
                           its, ite, jts, jte, kts, kte,           &
                           F_ICE_PHY,F_RAIN_PHY,F_RIMEF_PHY)
+     CASE (etamp_HWRF_v2)
+         CALL etanewinit_HWRF_v2 (MPDT,DT,DX,DY,LOWLYR,restart,           &
+                          allowed_to_read,                        &
+                          ids, ide, jds, jde, kds, kde,           &
+                          ims, ime, jms, jme, kms, kme,           &
+                          its, ite, jts, jte, kts, kte,           &
+                          F_ICE_PHY,F_RAIN_PHY,F_RIMEF_PHY)
      CASE (mp_HWRF_advect)
          CALL etanewinit_HWRF (MPDT,DT,DX,DY,LOWLYR,restart,           &
+                          allowed_to_read,                        &
+                          ids, ide, jds, jde, kds, kde,           &
+                          ims, ime, jms, jme, kms, kme,           &
+                          its, ite, jts, jte, kts, kte)
+     CASE (mp_HWRF_advect_v2)
+         CALL etanewinit_HWRF_v2 (MPDT,DT,DX,DY,LOWLYR,restart,           &
                           allowed_to_read,                        &
                           ids, ide, jds, jde, kds, kde,           &
                           ims, ime, jms, jme, kms, kme,           &
