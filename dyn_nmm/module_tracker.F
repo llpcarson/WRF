@@ -2,7 +2,7 @@ module module_tracker
   implicit none
   private
 #ifdef HWRF
-  public :: ncep_tracker_center, ncep_tracker_init
+  public :: ncep_tracker_center, ncep_tracker_init, update_tracker_post_move
 
   real, parameter :: invE=0.36787944117 ! 1/e
 
@@ -1879,4 +1879,46 @@ contains
     endif
   end subroutine get_lonlat
 #endif
+
+  subroutine update_tracker_post_move(grid)
+    ! This updates the tracker i/j fix location and square of the
+    ! distance to the tracker center after a nest move.
+    USE MODULE_DOMAIN, ONLY : domain,get_ijk_from_grid
+    type(domain), intent(inout) :: grid
+    integer :: ierr, &
+         IDS,IDE,JDS,JDE,KDS,KDE, &
+         IMS,IME,JMS,JME,KMS,KME, &
+         IPS,IPE,JPS,JPE,KPS,KPE
+
+    ! Get the grid bounds:
+    CALL get_ijk_from_grid (  grid ,      &
+         ids, ide, jds, jde, kds, kde,    &
+         ims, ime, jms, jme, kms, kme,    &
+         ips, ipe, jps, jpe, kps, kpe    )
+
+    ! Get the i/j center location from the fix location:
+    ierr=0
+    call get_nearest_lonlat(grid,grid%tracker_ifix,grid%tracker_jfix, &
+         ierr,grid%tracker_fixlon,grid%tracker_fixlat, &
+         IDS,IDE,JDS,JDE,KDS,KDE, &
+         IMS,IME,JMS,JME,KMS,KME, &
+         IPS,IPE,JPS,JPE,KPS,KPE)
+
+    ! Get the square of the approximate distance to the tracker center
+    ! at all points:
+    if(ierr==0) &
+         call get_tracker_distsq(grid, &
+         IDS,IDE,JDS,JDE,KDS,KDE, &
+         IMS,IME,JMS,JME,KMS,KME, &
+         IPS,IPE,JPS,JPE,KPS,KPE)
+  end subroutine update_tracker_post_move
 end module module_tracker
+
+subroutine nmm_med_tracker_post_move(grid)
+  ! This updates the tracker i/j fix location and square of the
+  ! distance to the tracker center after a nest move.
+  use module_tracker, only: update_tracker_post_move
+  use module_domain, only : domain
+  type(domain), intent(inout) :: grid
+  call update_tracker_post_move(grid)
+end subroutine nmm_med_tracker_post_move

@@ -4482,6 +4482,9 @@ END
 #if (NMM_NEST == 1)
       USE module_comm_dm, ONLY : HALO_NMM_FORCE_DOWN1_sub, HALO_NMM_FORCE_DOWN1M_sub, &
            HALO_NMM_FORCE_DOWN_SST_sub, HALO_NMM_INTERP_INFO_sub, HALO_NMM_TORNADO_sub
+#ifdef HWRF
+      use module_comm_dm, only: HALO_NMM_SWATH_sub
+#endif
 #endif
       IMPLICIT NONE
 !
@@ -4555,6 +4558,11 @@ integer myproc
       if(size(grid%tg_max_m10wind)>1) then
 #include "HALO_NMM_TORNADO.inc"
       endif
+#ifdef HWRF
+      if(size(grid%precip_swath)>1) then
+#include "HALO_NMM_SWATH.inc"
+      endif
+#endif
 
       call store_interp_info(ngrid,grid)
       call ext_c2b_fulldom(ngrid%IIH,ngrid%JJH,ngrid%HBWGT1, &
@@ -4687,6 +4695,9 @@ grid=>cgrid
 #if ( NMM_NEST == 1 )
       USE module_comm_dm, ONLY : HALO_NMM_FORCE_DOWN1_sub, HALO_NMM_FORCE_DOWN1M_sub, &
            HALO_NMM_INTERP_INFO_sub,HALO_NMM_FORCE_DOWN_SST_sub, HALO_NMM_TORNADO_sub
+#ifdef HWRF
+      use module_comm_dm, only: HALO_NMM_SWATH_sub
+#endif
 #endif
       IMPLICIT NONE
 !
@@ -4753,6 +4764,11 @@ endif
 if(size(grid%tg_max_m10wind)>1) then
 #include "HALO_NMM_TORNADO.inc"
 endif
+#ifdef HWRF
+if(size(grid%precip_swath)>1) then
+#include "HALO_NMM_SWATH.inc"
+endif
+#endif
 
       RETURN
     END SUBROUTINE force_intermediate_nmm

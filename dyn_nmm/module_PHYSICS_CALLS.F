@@ -938,7 +938,7 @@
       INTEGER :: IFNDALBSI
       INTEGER :: IFNDICEDEPTH
       INTEGER :: IFNDSNOWSI
-!
+      REAL    :: WIND
       INTEGER :: IGS,IGE,JGS,JGE, PQ_I   !BSF
       LOGICAL :: FQ_I, ETAMP_PHYSICS,ETAMP_Regional            !BSF
 
@@ -1608,6 +1608,18 @@
         ENDDO
       ENDIF
 !
+#ifdef HWRF
+      if(size(grid%windsq_swath)>1) then
+         do j=max(jts,jds),min(jte,jde-1)
+            do i=max(its,ids),min(ite,ide-1)
+               if(grid%interesting(i,j)==0) cycle
+               wind=u10(i,j)**2 + v10(i,j)**2
+               if(wind>grid%windsq_swath(i,j)) grid%windsq_swath(i,j)=wind
+            enddo
+         enddo
+      endif
+#endif
+
       IF(CONFIG_FLAGS%SF_SFCLAY_PHYSICS==1)THEN ! non-NMM package
 !$omp parallel do                                                       &
 !$omp& private(i,j)
@@ -2248,7 +2260,7 @@
 !
       REAL,DIMENSION(:,:,:,:),ALLOCATABLE :: MOIST_TRANS
 !
-      LOGICAL :: RESTART,WARM_RAIN,ETAMP_Regional, have_tg_tp
+      LOGICAL :: RESTART,WARM_RAIN,ETAMP_Regional, have_tg_tp, have_swath
       LOGICAL,DIMENSION(IMS:IME,JMS:JME) :: CU_ACT_FLAG
 !
       CHARACTER(LEN=255) :: message
@@ -2647,6 +2659,9 @@
 !
 
       have_tg_tp = (size(grid%tg_total_precip)>1)
+#ifdef HWRF
+      have_swath = ( size(grid%precip_swath)>1 )
+#endif
 !$omp parallel do                                                       &
 !$omp& private(i,iendx,j,ncubot,ncutop,pcpcol)
       pcp_cloud: DO J=MYJS2,MYJE2
@@ -2665,6 +2680,12 @@
           if(have_tg_tp) then
              grid%tg_total_precip(i,j) = grid%tg_total_precip(i,j) + PCPCOL
           endif
+#ifdef HWRF
+          if(have_swath) then
+             if(grid%interesting(i,j)/=0) &
+                  grid%precip_swath(i,j) = grid%precip_swath(i,j) + PCPCOL
+          endif
+#endif
 !
 !***  SAVE CLOUD TOP AND BOTTOM FOR RADIATION (HTOP/HBOT) AND
 !***  FOR OUTPUT (CNVTOP/CNVBOT, HTOPS/HBOTS, HTOPD/HBOTD) ARRAYS.
@@ -2890,7 +2911,7 @@
       REAL,DIMENSION(:,:,:,:),ALLOCATABLE :: MOIST_TRANS
       REAL,DIMENSION(:,:,:,:),ALLOCATABLE :: SCALAR_TRANS
 !
-      LOGICAL :: E_BDY,F_QT,QT_PRESENT,WARM_RAIN, have_tg_tp
+      LOGICAL :: E_BDY,F_QT,QT_PRESENT,WARM_RAIN, have_tg_tp, have_swath
 !
 !-----------------------------------------------------------------------
 !***********************************************************************
@@ -3095,6 +3116,9 @@
 !
 !$omp parallel do                                                       &
 !$omp& private(i,iendx,j,pcpcol)
+#ifdef HWRF
+      have_swath = ( size(grid%precip_swath)>1 )
+#endif
       have_tg_tp = (size(grid%tg_total_precip)>1)
       DO J=MYJS2,MYJE2
         IENDX=MYIE1
@@ -3106,6 +3130,12 @@
           if(have_tg_tp) then
              grid%tg_total_precip(i,j) = grid%tg_total_precip(i,j) + PCPCOL
           endif
+#ifdef HWRF
+          if(have_swath) then
+             if(grid%interesting(i,j)/=0) &
+                  grid%precip_swath(i,j) = grid%precip_swath(i,j) + PCPCOL
+          endif
+#endif
         ENDDO
       ENDDO
 !

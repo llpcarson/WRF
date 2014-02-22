@@ -87,14 +87,14 @@
   C(i,j,k)=max(C(i,j,k),   max(N(ni,nj+2,k),                              \
   max(N(ni-1,nj  ,k),      max(N(ni,nj  ,k),        max(N(ni+1,nj  ,k),   \
               max(N(ni-a  ,nj-1,k),      max(N(ni+1-a,nj-1,k),            \
-                               N(ni,nj-2,k) )))))))                       \
+                               N(ni,nj-2,k) )))))))
 
 ! Maximum value from N array to C array:
 #define N2I_SET_MAX_IJ(C,N,i,j,ni,nj) \
   C(i,j)=max(C(i,j),          max(N(ni,nj+2),                           \
        max(N(ni-1,nj  ),      max(N(ni,nj  ),        max(N(ni+1,nj  ),  \
                max(N(ni-a  ,nj-1),      max(N(ni+1-a,nj-1),             \
-                               N(ni,nj-2) )))))))                       \
+                               N(ni,nj-2) )))))))
        
 
 module module_interp_nmm

@@ -14,6 +14,7 @@
      &           )
 !-----------------------------------------------------------------------
         use module_timing
+      USE MODULE_SWATH,                 ONLY : UPDATE_INTEREST
       USE MODULE_DOMAIN,                ONLY : DOMAIN, GET_IJK_FROM_GRID
       USE MODULE_CONFIGURE,             ONLY : GRID_CONFIG_REC_TYPE
       USE MODULE_MODEL_CONSTANTS
@@ -598,6 +599,15 @@
         CALL RESET_TORNADO_GENESIS(GRID,CONFIG_FLAGS)
         tornado_tim=tornado_tim+now_time()-btimx
      ENDIF
+!-----------------------------------------------------------------------
+!***  UPDATE AREA OF INTEREST
+!-----------------------------------------------------------------------
+#ifdef HWRF
+     if(size(grid%precip_swath)>1 .and. grid%update_interest) then
+        call update_interest(grid,config_flags)
+        grid%update_interest=.false.
+     endif
+#endif
 !-----------------------------------------------------------------------
 !***  ZERO OUT ACCUMULATED QUANTITIES WHEN NEEDED.
 !-----------------------------------------------------------------------
@@ -2537,14 +2547,6 @@
                      ,IDS,IDF,JDS,JDF,KDS,KDE      &
                      ,IMS,IME,JMS,JME,KMS,KME      &
                      ,ITS,ITE,JTS,JTE,KTS,KTE      )
-      if(size(grid%membrane_mslp)>1 .and. size(grid%best_mslp)>1) then
-         call CALC_BEST_MSLP(grid%best_mslp,grid%mslp, &
-                             grid%membrane_mslp,grid%fis, &
-                             IDS,IDE,JDS,JDE,KDS,KDE, &
-                             IMS,IME,JMS,JME,KMS,KME, &
-                             ITS,ITE,JTS,JTE,KTS,KTE)
-      endif
-
      ENDIF
      diag_tim=diag_tim+now_time()-btimx
    endif hwrfx_mlsp
@@ -2582,6 +2584,26 @@
         btimx=now_time()
         CALL CALC_TORNADO_GENESIS(GRID,CONFIG_FLAGS)
         tornado_tim=tornado_tim+now_time()-btimx
+     ENDIF
+
+     IF(mod(grid%NTSD,grid%ntornado)==0) then
+      have_best: if(size(grid%best_mslp)>1) then
+         have_membrane: if(size(grid%membrane_mslp)>1) then
+            call CALC_BEST_MSLP(grid%best_mslp,grid%mslp, &
+                 grid%membrane_mslp,grid%fis, &
+                 IDS,IDE,JDS,JDE,KDS,KDE, &
+                 IMS,IME,JMS,JME,KMS,KME, &
+                 ITS,ITE,JTS,JTE,KTS,KTE)
+         else
+            ! In absence of the Membrane MSLP, the Schuell is all we
+            ! have, so it is the best by proxy:
+            do j=jps,min(jde-1,jpe)
+               do i=ips,min(ide-1,ipe)
+                  grid%best_mslp(i,j)=grid%mslp(i,j)
+               enddo
+            enddo
+         endif have_membrane
+      endif have_best
      ENDIF
 
 #ifdef HWRF

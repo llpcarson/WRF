@@ -26,6 +26,7 @@ MODULES =                 		\
         module_PHYSICS_CALLS.o          \
         module_IGWAVE_ADJUST.o          \
 	module_membrane_mslp.o		\
+	module_swath.o			\
 	module_tracker.o		\
 	module_tornado_genesis.o	\
 	module_relax.o			\

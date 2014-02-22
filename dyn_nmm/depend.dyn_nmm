@@ -10,6 +10,11 @@ solve_nmm.o:   module_BC_NMM.o module_STATS_FOR_MOVE.o \
 
 mediation_integrate.o: module_tornado_genesis.o
 
+module_swath.o: module_tracker.o ../frame/module_dm.o ../frame/module_domain.o \
+	../frame/module_configure.o
+
+mediation_nest_move.o: ../dyn_nmm/module_tracker.o
+
 module_tornado_genesis.o: ../frame/module_dm.o ../frame/module_domain.o \
                           $(ESMF_MOD_DEPENDENCE) ../frame/module_configure.o
 
@@ -24,7 +29,7 @@ module_STATS_FOR_MOVE.o: ../frame/module_dm.o ../frame/module_domain.o \
 	../frame/module_configure.o module_membrane_mslp.o module_tracker.o
 
 start_domain_nmm.o: module_HIFREQ.o ../share/module_random.o module_STATS_FOR_MOVE.o \
-                    module_tornado_genesis.o
+                    module_tornado_genesis.o module_swath.o
 
 module_ADVECTION.o: ../share/module_MPP.o module_INDX.o
 

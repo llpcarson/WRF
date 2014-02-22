@@ -1825,11 +1825,13 @@
             XSUMS_L(I,J,K,4)=DWSTIJ
           ENDIF
 !
-          IF(DESTIJ>0.)THEN
-            XSUMS_L(I,J,K,5)=DESTIJ
-          ELSE
-            XSUMS_L(I,J,K,6)=DESTIJ
-          ENDIF
+          if(advect_q2) then
+             IF(DESTIJ>0.)THEN
+                XSUMS_L(I,J,K,5)=DESTIJ
+             ELSE
+                XSUMS_L(I,J,K,6)=DESTIJ
+             ENDIF
+          endif
 !-----------------------------------------------------------------------
 #else
 !-----------------------------------------------------------------------
@@ -1845,11 +1847,13 @@
             XSUMS(4,K)=XSUMS(4,K)+DWSTIJ
           ENDIF
 !
-          IF(DESTIJ>0.)THEN
-            XSUMS(5,K)=XSUMS(5,K)+DESTIJ
-          ELSE
-            XSUMS(6,K)=XSUMS(6,K)+DESTIJ
-          ENDIF
+          if(advect_q2) then
+             IF(DESTIJ>0.)THEN
+                XSUMS(5,K)=XSUMS(5,K)+DESTIJ
+             ELSE
+                XSUMS(6,K)=XSUMS(6,K)+DESTIJ
+             ENDIF
+          endif
 !-----------------------------------------------------------------------
 #endif
 !-----------------------------------------------------------------------
