@@ -2936,7 +2936,7 @@ integer myproc
    USE module_mp_etanew
    USE module_mp_etaold
 #if (NMM_CORE == 1)
-   USE module_mp_HWRF
+   USE module_mp_HWRF, only: etanewinit_HWRF
 #endif
    USE module_mp_thompson
    USE module_mp_morr_two_moment
@@ -3029,12 +3029,20 @@ integer myproc
                           its, ite, jts, jte, kts, kte            )
 #if(NMM_CORE==1)
      CASE (etamp_HWRF)
+!         CALL etanewinit_HWRF (MPDT,DT,DX,DY,LOWLYR,restart,           &
+!                          F_ICE_PHY,F_RAIN_PHY,F_RIMEF_PHY,       &
+!                          allowed_to_read,                        &
+!                          ids, ide, jds, jde, kds, kde,           &
+!                          ims, ime, jms, jme, kms, kme,           &
+!                          its, ite, jts, jte, kts, kte            )
          CALL etanewinit_HWRF (MPDT,DT,DX,DY,LOWLYR,restart,           &
-                          F_ICE_PHY,F_RAIN_PHY,F_RIMEF_PHY,       &
-                          allowed_to_read,                        &
-                          ids, ide, jds, jde, kds, kde,           &
-                          ims, ime, jms, jme, kms, kme,           &
-                          its, ite, jts, jte, kts, kte            )
+                           allowed_to_read,                        &
+                           ids, ide, jds, jde, kds, kde,           &
+                           ims, ime, jms, jme, kms, kme,           &
+                           its, ite, jts, jte, kts, kte,           &
+                           F_ICE_PHY,F_RAIN_PHY,F_RIMEF_PHY)
+
+
 #endif 
      CASE (THOMPSON)
 ! Cycling the WRF forecast with moving nests will cause this initialization to be
