@@ -406,25 +406,25 @@ contains
     endif
 #endif
 
-    if(grid%vortex_tracker==7) then
-       call get_first_ges(grid,iguess,jguess,longuess,latguess, &
-            IDS,IDE,JDS,JDE,KDS,KDE, &
-            IMS,IME,JMS,JME,KMS,KME, &
-            IPS,IPE,JPS,JPE,KPS,KPE)
+!     if(grid%vortex_tracker==7) then
+!        call get_first_ges(grid,iguess,jguess,longuess,latguess, &
+!             IDS,IDE,JDS,JDE,KDS,KDE, &
+!             IMS,IME,JMS,JME,KMS,KME, &
+!             IPS,IPE,JPS,JPE,KPS,KPE)
        
-       call store_old_fixes(grid, &
-            IDS,IDE,JDS,JDE,KDS,KDE, &
-            IMS,IME,JMS,JME,KMS,KME, &
-            IPS,IPE,JPS,JPE,KPS,KPE)
+!        call store_old_fixes(grid, &
+!             IDS,IDE,JDS,JDE,KDS,KDE, &
+!             IMS,IME,JMS,JME,KMS,KME, &
+!             IPS,IPE,JPS,JPE,KPS,KPE)
 
-       ! Store the first guess:
-       grid%track_have_guess=.true.
-       grid%track_guess_lat=latguess
-       grid%track_guess_lon=longuess
-3011   format('First guess: lon=',F0.3,' lat=',F0.3)
-       write(message,3011) grid%track_guess_lon,grid%track_guess_lat
-       call wrf_debug(1,message)
-    endif
+!        ! Store the first guess:
+!        grid%track_have_guess=.true.
+!        grid%track_guess_lat=latguess
+!        grid%track_guess_lon=longuess
+! 3011   format('First guess: lon=',F0.3,' lat=',F0.3)
+!        write(message,3011) grid%track_guess_lon,grid%track_guess_lat
+!        call wrf_debug(1,message)
+!     endif
 
   end subroutine ntc_impl
 
