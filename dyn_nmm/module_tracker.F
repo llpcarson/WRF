@@ -1236,12 +1236,23 @@ contains
 
     ! We jump here if we're giving up on finding the center
 999 continue
-    grid%tracker_fixlon=-999.0
-    grid%tracker_fixlat=-999.0
-    grid%tracker_ifix=-99
-    grid%tracker_jfix=-99
+    ! Use domain center as storm location
+    grid%tracker_ifix=ide/2
+    grid%tracker_jfix=jde/2
     grid%tracker_havefix=.false.
     grid%tracker_gave_up=.true.
+    call get_lonlat(grid,ifinal,jfinal,lonfinal,latfinal,ierr, &
+         ids,ide, jds,jde, kds,kde, &
+         ims,ime, jms,jme, kms,kme, &
+         ips,ipe, jps,jpe, kps,kpe)
+    if(ierr/=0) then
+       call wrf_error_fatal('Center of domain is not in domain (!?)')
+       goto 999
+    endif
+
+    grid%tracker_fixlon=-999.0
+    grid%tracker_fixlat=-999.0
+    
   end subroutine fixcenter
 
   subroutine get_uv_guess(grid,icen,jcen,loncen,latcen,calcparm, &
