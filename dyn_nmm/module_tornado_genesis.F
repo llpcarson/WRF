@@ -68,6 +68,10 @@ contains
           grid%tg_min_zhel_25(i,j)=0
           grid%tg_max_zhel_03(i,j)=0
           grid%tg_min_zhel_03(i,j)=0
+          grid%tg_max_updhel03(i,j)=0
+          grid%tg_max_updhel25(i,j)=0
+          grid%tg_updhel03(i,j)=0
+          grid%tg_updhel25(i,j)=0
           grid%tg_total_precip(i,j)=0
        enddo
     enddo
@@ -243,8 +247,8 @@ contains
     integer :: IMS,IME,JMS,JME,KMS,KME
     integer :: IPS,IPE,JPS,JPE,KPS,KPE
     integer :: i,j,k, istart,iend, jstart,jend, a, imin,imax
-    real :: dudy, dvdx, w, zhel, maxmaxwind, minminw, maxmaxw, sec
-    real :: height, height1, height2, height0, maxmaxzhel, minminzhel
+    real :: dudy, dvdx, w, zhel, maxmaxwind, minminw, maxmaxw, sec, updhel03, updhel25
+    real :: height, height1, height2, height0, maxmaxzhel, minminzhel, updhelpart
     character*255 :: message
 
     if(config_flags%tg_option/=tg_emc2014spc) return
@@ -330,6 +334,8 @@ contains
           k=kds
           height0=grid%Z(i,j,k)   ! height0=lowest interface level height
           height1=0.0             ! height1=lower height bound for layer
+          updhel03=0
+          updhel25=0
           do while(k<kde-1 .and. height1<5000.0)
              height2=grid%Z(i,j,k+1)-height0 ! height2=layer upper height bound
 
@@ -342,17 +348,33 @@ contains
                 grid%tg_min_zhel_03(i,j)=min(grid%tg_min_zhel_03(i,j),zhel)
                 minminzhel=min(grid%tg_min_zhel_03(i,j),minminzhel)
                 maxmaxzhel=max(grid%tg_max_zhel_03(i,j),maxmaxzhel)
+                updhelpart=max(zhel*(height2-height1),0.)
+                if(grid%glat(i,j)<0) updhelpart=-updhelpart
+                if(updhelpart>0) then
+                   updhel03=updhel03+updhelpart
+                endif
              endif
              if(height2>2000.0) then
                 grid%tg_max_zhel_25(i,j)=max(grid%tg_max_zhel_25(i,j),zhel)
                 grid%tg_min_zhel_25(i,j)=min(grid%tg_min_zhel_25(i,j),zhel)
                 minminzhel=min(grid%tg_min_zhel_25(i,j),minminzhel)
                 maxmaxzhel=max(grid%tg_max_zhel_25(i,j),maxmaxzhel)
+                updhelpart=max(zhel*(height2-height1),0.)
+                if(grid%glat(i,j)<0) updhelpart=-updhelpart
+                if(updhelpart>0) then
+                   updhel25=updhel25+updhelpart
+                endif
              endif
 
              k=k+1
              height1=height2
           enddo
+          grid%tg_updhel25(i,j)=updhel25
+          grid%tg_updhel03(i,j)=updhel03
+          if(updhel25>grid%tg_max_updhel25(i,j)) &
+               grid%tg_max_updhel25(i,j)=updhel25
+          if(updhel03>grid%tg_max_updhel03(i,j)) &
+               grid%tg_max_updhel03(i,j)=updhel03
        enddo
     enddo
 
@@ -367,6 +389,10 @@ contains
        grid%tg_max_zhel_03(ids,jstart:jend)=grid%tg_max_zhel_03(ids+1,jstart:jend)
        grid%tg_min_zhel_25(ids,jstart:jend)=grid%tg_min_zhel_25(ids+1,jstart:jend)
        grid%tg_min_zhel_03(ids,jstart:jend)=grid%tg_min_zhel_03(ids+1,jstart:jend)
+       grid%tg_updhel25(ids,jstart:jend)=grid%tg_updhel25(ids+1,jstart:jend)
+       grid%tg_updhel03(ids,jstart:jend)=grid%tg_updhel03(ids+1,jstart:jend)
+       grid%tg_max_updhel25(ids,jstart:jend)=grid%tg_max_updhel25(ids+1,jstart:jend)
+       grid%tg_max_updhel03(ids,jstart:jend)=grid%tg_max_updhel03(ids+1,jstart:jend)
        grid%tg_max_wwind(ids,jstart:jend)=grid%tg_max_wwind(ids+1,jstart:jend)
        grid%tg_min_wwind(ids,jstart:jend)=grid%tg_min_wwind(ids+1,jstart:jend)
        grid%tg_max_m10wind(ids,jstart:jend)=grid%tg_max_m10wind(ids+1,jstart:jend)
@@ -377,6 +403,10 @@ contains
        grid%tg_max_zhel_03(ide-1,jstart:jend)=grid%tg_max_zhel_03(ide-2,jstart:jend)
        grid%tg_min_zhel_25(ide-1,jstart:jend)=grid%tg_min_zhel_25(ide-2,jstart:jend)
        grid%tg_min_zhel_03(ide-1,jstart:jend)=grid%tg_min_zhel_03(ide-2,jstart:jend)
+       grid%tg_updhel25(ide-1,jstart:jend)=grid%tg_updhel25(ide-2,jstart:jend)
+       grid%tg_updhel03(ide-1,jstart:jend)=grid%tg_updhel03(ide-2,jstart:jend)
+       grid%tg_max_updhel25(ide-1,jstart:jend)=grid%tg_max_updhel25(ide-2,jstart:jend)
+       grid%tg_max_updhel03(ide-1,jstart:jend)=grid%tg_max_updhel03(ide-2,jstart:jend)
        grid%tg_max_wwind(ide-1,jstart:jend)=grid%tg_max_wwind(ide-2,jstart:jend)
        grid%tg_min_wwind(ide-1,jstart:jend)=grid%tg_min_wwind(ide-2,jstart:jend)
        grid%tg_max_m10wind(ide-1,jstart:jend)=grid%tg_max_m10wind(ide-2,jstart:jend)
@@ -389,6 +419,10 @@ contains
        grid%tg_max_zhel_03(imin:imax,jds)=grid%tg_max_zhel_03(imin:imax,jds+1)
        grid%tg_min_zhel_25(imin:imax,jds)=grid%tg_min_zhel_25(imin:imax,jds+1)
        grid%tg_min_zhel_03(imin:imax,jds)=grid%tg_min_zhel_03(imin:imax,jds+1)
+       grid%tg_updhel25(imin:imax,jds)=grid%tg_updhel25(imin:imax,jds+1)
+       grid%tg_updhel03(imin:imax,jds)=grid%tg_updhel03(imin:imax,jds+1)
+       grid%tg_max_updhel25(imin:imax,jds)=grid%tg_max_updhel25(imin:imax,jds+1)
+       grid%tg_max_updhel03(imin:imax,jds)=grid%tg_max_updhel03(imin:imax,jds+1)
        grid%tg_max_wwind(imin:imax,jds)=grid%tg_max_wwind(imin:imax,jds+1)
        grid%tg_min_wwind(imin:imax,jds)=grid%tg_min_wwind(imin:imax,jds+1)
        grid%tg_max_m10wind(imin:imax,jds)=grid%tg_max_m10wind(imin:imax,jds+1)
@@ -399,6 +433,10 @@ contains
        grid%tg_max_zhel_03(imin:imax,jde-1)=grid%tg_max_zhel_03(imin:imax,jde-2)
        grid%tg_min_zhel_25(imin:imax,jde-1)=grid%tg_min_zhel_25(imin:imax,jde-2)
        grid%tg_min_zhel_03(imin:imax,jde-1)=grid%tg_min_zhel_03(imin:imax,jde-2)
+       grid%tg_updhel25(imin:imax,jde-1)=grid%tg_updhel25(imin:imax,jde-2)
+       grid%tg_updhel03(imin:imax,jde-1)=grid%tg_updhel03(imin:imax,jde-2)
+       grid%tg_max_updhel25(imin:imax,jde-1)=grid%tg_max_updhel25(imin:imax,jde-2)
+       grid%tg_max_updhel03(imin:imax,jde-1)=grid%tg_max_updhel03(imin:imax,jde-2)
        grid%tg_max_wwind(imin:imax,jde-1)=grid%tg_max_wwind(imin:imax,jde-2)
        grid%tg_min_wwind(imin:imax,jde-1)=grid%tg_min_wwind(imin:imax,jde-2)
        grid%tg_max_m10wind(imin:imax,jde-1)=grid%tg_max_m10wind(imin:imax,jde-2)
