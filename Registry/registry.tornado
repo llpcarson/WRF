@@ -13,6 +13,14 @@ state  real tg_max_zhel_25    ij dyn_nmm 1 f rh0123u=(UpMax)d=(DownCopy)   "TG_M
 state  real tg_min_zhel_25    ij dyn_nmm 1 f rh0123u=(UpMax)d=(DownCopy)   "TG_MIN_ZHEL_25" "Minimum helicity vertical term 2-5km above ground since last output time" "m2 s-2"
 state  real tg_max_zhel_03    ij dyn_nmm 1 f rh0123u=(UpMax)d=(DownCopy)   "TG_MAX_ZHEL_03" "Maximum helicity vertical term 0-3km above ground since last output time" "m2 s-2"
 state  real tg_min_zhel_03    ij dyn_nmm 1 f rh0123u=(UpMax)d=(DownCopy)   "TG_MIN_ZHEL_03" "Minimum helicity vertical term 0-3km above ground since last output time" "m2 s-2"
+
+
+state  real tg_updhel25         ij dyn_nmm 1 f rh0123u=(UpCopy)d=(DownCopy) "TG_UPDHEL_25"       "Updraft helicity 2-5km above ground since last output time"  "m2 s-2"
+state  real tg_max_updhel25     ij dyn_nmm 1 f rh0123u=(UpCopy)d=(DownCopy) "TG_MAX_UPDHEL_25"   "Maximum updraft helicity 2-5km above ground since last output time"  "m2 s-2"
+state  real tg_updhel03         ij dyn_nmm 1 f rh0123u=(UpCopy)d=(DownCopy) "TG_UPDHEL_03"       "Updraft helicity 0-3km above ground since last output time"  "m2 s-2"
+state  real tg_max_updhel03     ij dyn_nmm 1 f rh0123u=(UpCopy)d=(DownCopy) "TG_MAX_UPDHEL_03"   "Maximum updraft helicity 0-3km above ground since last output time"  "m2 s-2"
+
+
 state  real tg_total_precip   ij dyn_nmm 1 f rh0123u=(UpCopy)d=(DownCopy) "TG_TOTAL_PRECIP" "Accumulated precipitation" "m"
 state  real tg_interval_start -  dyn_nmm 1 - rh0123                     "TG_INTERVAL_START" "Start of interval, in seconds since analysis time" "s"
 state  real tg_interval_end   -  dyn_nmm 1 - rh0123                       "TG_INTERVAL_END" "End of interval, in seconds since analysis time" "s"
@@ -33,8 +41,8 @@ rconfig integer tg_option        namelist,physics      1      0 rh0123          
 rconfig integer ntornado         namelist,physics max_domains 1 rh0123           "NTORNADO" "Number of dynamics timesteps between updates of tg_ vars" ""
 #------------------------------- tg option -------------------------------
 package  tg_none         tg_option==0   -   -
-package  tg_emc2014spc   tg_option==1   -   state:tg_max_m10wind,tg_max_wwind,tg_min_wwind,tg_max_zhel_25,tg_min_zhel_25,tg_max_zhel_03,tg_min_zhel_03,tg_interval_start,tg_interval_end,tg_duration,tg_total_precip,tlow,zlow,northwind,eastwind
+package  tg_emc2014spc   tg_option==1   -   state:tg_max_m10wind,tg_max_wwind,tg_min_wwind,tg_max_zhel_25,tg_min_zhel_25,tg_max_zhel_03,tg_min_zhel_03,tg_interval_start,tg_interval_end,tg_duration,tg_total_precip,tlow,zlow,northwind,eastwind,tg_updhel03,tg_updhel25,tg_max_updhel03,tg_max_updhel25
 #--------------------------------- halos ---------------------------------
 # Before forcing:
-halo HALO_NMM_TORNADO dyn_nmm 24:tg_max_m10wind,tg_max_wwind,tg_min_wwind,tg_max_zhel_25,tg_min_zhel_25,tg_max_zhel_03,tg_min_zhel_03,tg_total_precip
+halo HALO_NMM_TORNADO dyn_nmm 24:tg_max_m10wind,tg_max_wwind,tg_min_wwind,tg_max_zhel_25,tg_min_zhel_25,tg_max_zhel_03,tg_min_zhel_03,tg_total_precip,tg_updhel03,tg_updhel25,tg_max_updhel03,tg_max_updhel25
 # ------------------ end of tornado genesis parameters -------------------
