@@ -15,6 +15,7 @@ CONTAINS
                  PGCON,sas_mass_flux,                               &
                  shalconv,shal_pgcon,                               &
                  HPBL2D,EVAP2D,HEAT2D,                              & !Kwon for shallow convection
+                 ens_random_seed,ens_ranvar,rrc,                    & !Zhang for trigger perturbation in SAS          
                  P_QI,P_FIRST_SCALAR,                               & 
                  ids,ide, jds,jde, kds,kde,                         &
                  ims,ime, jms,jme, kms,kme,                         &
@@ -116,6 +117,8 @@ CONTAINS
       REAL,    INTENT(IN) ::                                            &
                                         DT
 
+      real,    INTENT(IN) ::            ens_ranvar,rrc         !Zhang
+      integer, INTENT(IN) ::            ens_random_seed    !Zhang
       REAL, OPTIONAL, INTENT(IN) :: PGCON,sas_mass_flux,shal_pgcon
       INTEGER, OPTIONAL, INTENT(IN) :: shalconv
       REAL(kind=kind_phys)       :: PGCON_USE,SHAL_PGCON_USE,massf
@@ -403,7 +406,8 @@ CONTAINS
 
       CALL SASCNVN(IM,IM,KX,JCAP,DELT,DEL,PRSL,PS,PHIL,                  &
                   QL,Q1,T1,U1,V1,RCS,CLDWRK,RN,KBOT,                    &
-                  KTOP,KCNV,SLIMSK,DOT,NCLOUD,PGCON_USE,massf)
+                  KTOP,KCNV,SLIMSK,DOT,NCLOUD,PGCON_USE,massf,          &
+                  ens_random_seed,ens_ranvar,rrc)     !Zhang
 !
       do i=its,ite
         RAINCV1(I,J)=RN(I)*1000./STEPCU
@@ -2593,7 +2597,7 @@ CONTAINS
 
       subroutine sascnvn(im,ix,km,jcap,delt,del,prsl,ps,phil,ql,   & 
      &     q1,t1,u1,v1,rcs,cldwrk,rn,kbot,ktop,kcnv,slimsk,        &
-     &     dot,ncloud,pgcon,sas_mass_flux)                         
+     &     dot,ncloud,pgcon,sas_mass_flux,ens_random_seed,ens_ranvar,rrc) !zhang                         
 !     &     dot,ncloud,ud_mf,dd_mf,dt_mf)                         
 !    &     dot,ncloud,ud_mf,dd_mf,dt_mf,me)
 !
@@ -2711,6 +2715,9 @@ CONTAINS
 !c     data acritt/.203,.515,.521,.566,.625,.665,.659,.688,
 !c    &            .743,.813,.886,.947,1.138,1.377,1.896/
       real(kind=kind_phys) tf, tcr, tcrf
+      real :: rr,rrc,ens_ranvar       !zhang
+      integer :: ens_random_seed         !zhang
+      real*8 :: gasdev,ran1            !zhang
       parameter (tf=233.16, tcr=263.16, tcrf=1.0/(tcr-tf))
 !
 !c-----------------------------------------------------------------------
@@ -3038,7 +3045,20 @@ CONTAINS
           tem1= .5*(cincrmax-cincrmin)
           cincr = cincrmax - tem * tem1
           pbcdif(i) = pfld(i,kb(i)) - pfld(i,kbcon(i))
-          if(pbcdif(i).gt.cincr) then
+! randomly perturb the convection trigger
+          if(rrc .gt. 0.0) then
+ 888      rr=ens_ranvar*ran1(ens_random_seed)-rrc+cincr     !White noise
+!zz 888      rr=ens_ranvar*gasdev(ens_random_seed)+cincr    !Gaussian Distribution                
+!zz          if (rr .ge. cincrmax+rrc) goto 888             !Gaussian Distribution            
+!zz          if (rr .le. cincrmin-rrc) goto 888             !Gaussian Distribution            
+!ZZZZZZ          print*, "zhang in sas condition rr",pbcdif(i),rr,cincr
+          else
+          rr=cincr
+!ZZZZZZ          print*, "zhang in sas no pert rr",rr,cincr
+          endif
+          if(pbcdif(i).gt.rr) then
+!zz          if(pbcdif(i).gt.cincr) then
+!zhang ends
              cnvflg(i) = .false.
           endif
         endif
@@ -5520,3 +5540,56 @@ CONTAINS
     end subroutine shalcnv
       END MODULE module_cu_sas
 
+      FUNCTION ran1(idum)
+      implicit none
+      integer idum,ia,im,iq,ir,ntab,ndiv
+      real*8 am,eps,rnmx
+      real*8 ran1
+      parameter (ia=16807,im=2147483647,am=1./im,iq=127773,ir=2836,   &
+     &           ntab=32,ndiv=1+(im-1)/ntab,eps=1.2e-7,rnmx=1.-eps)
+      integer j,k,iv(32),iy,junk
+      common /random/ junk,iv,iy
+      data iv /ntab*0/, iy /0/
+      if (idum.le.0.or.iy.eq.0) then
+         idum=max(-idum,1)
+         do j=ntab+8,1,-1
+            k=idum/iq
+            idum=ia*(idum-k*iq)-ir*k
+            if (idum.lt.0) idum=idum+im
+            if (j.le.ntab) iv(j)=idum
+         enddo
+         iy=iv(1)
+      endif
+      k=idum/iq
+      idum=ia*(idum-k*iq)-ir*k
+      if (idum.lt.0) idum=idum+im
+      j=1+iy/ndiv
+      iy=iv(j)
+      iv(j)=idum
+      ran1=min(am*iy,rnmx)
+      return
+      END FUNCTION ran1
+
+      FUNCTION gasdev(idum)
+      INTEGER idum
+      REAL*8 gasdev
+!CU    USES ran1
+      INTEGER iset
+      REAL*8 fac,gset,rsq,v1,v2,ran1
+      SAVE iset,gset
+      DATA iset/0/
+      if (iset.eq.0) then
+   1    v1=2.*ran1(idum)-1.
+        v2=2.*ran1(idum)-1.
+        rsq=v1**2+v2**2
+        if(rsq.ge.1..or.rsq.eq.0.)goto 1
+        fac=sqrt(-2.*log(rsq)/rsq)
+        gset=v1*fac
+        gasdev=v2*fac
+        iset=1
+      else
+        gasdev=gset
+        iset=0
+      endif
+      return
+      END FUNCTION gasdev

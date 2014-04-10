@@ -460,6 +460,7 @@ CONTAINS
                                                      ,f_qs      &
                                                      ,f_qg
    LOGICAL, INTENT(IN), OPTIONAL ::                   f_flux
+   INTEGER,save :: Iens_random_seed     !Zhang
 
 #if ( WRF_DFI_RADAR == 1 )
 !
@@ -760,6 +761,11 @@ CONTAINS
             CALL wrf_error_fatal ( wrf_err_message )
           END IF
           CALL wrf_debug(100,'in cu_sas')
+          if (grid%ntsd .eq. 0 ) Iens_random_seed=grid%ens_random_seed
+          print*, "zhang test0", grid%id,grid%ens_random_seed, Iens_random_seed                 
+          print*, "zhang test1", grid%id,grid%ens_ranvar
+          print*, "zhang test2", grid%id,grid%ntsd
+          print*, "zhang test3", grid%id,grid%rrc
           CALL CU_SAS(                                          &
                 DT=dt,ITIMESTEP=itimestep,STEPCU=STEPCU         &
                ,RTHCUTEN=RTHCUTEN,RQVCUTEN=RQVCUTEN             &
@@ -777,6 +783,10 @@ CONTAINS
                ,shalconv=shalconv,shal_pgcon=shal_pgcon         &
                ,hpbl2d=hpbl2d,evap2d=evap2d,heat2d=heat2d       &
                ,P_QI=p_qi,P_FIRST_SCALAR=param_first_scalar     &
+               ,ens_random_seed=Iens_random_seed,ens_ranvar=grid%ens_ranvar &
+!Zhang
+               ,rrc=grid%rrc                                    &
+!Zhang
                ,IDS=ids,IDE=ide,JDS=jds,JDE=jde,KDS=kds,KDE=kde &
                ,IMS=ims,IME=ime,JMS=jms,JME=jme,KMS=kms,KME=kme &
                ,ITS=its,ITE=ite,JTS=jts,JTE=jte,KTS=kts,KTE=kte &
