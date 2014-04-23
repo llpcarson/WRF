@@ -64,6 +64,7 @@
 !
 #ifdef HWRF
       USE MODULE_STATS_FOR_MOVE, only: vorttrak_init
+      USE MODULE_SWATH, only: init_swath
 #endif
       USE MODULE_TIMING
 #ifdef HWRF
@@ -102,6 +103,7 @@
    USE MODULE_GOCART_AEROSOLS, ONLY: SUM_PM_GOCART
    USE MODULE_MOSAIC_DRIVER, ONLY: SUM_PM_MOSAIC
 #endif
+   USE module_tornado_genesis, only: init_tornado_genesis
 
 !
 !----------------------------------------------------------------------
@@ -171,7 +173,7 @@
 !
 !!!   REAL :: BLDT,CWML,EXNSFC,G_INV,PLYR,PSFC,ROG,SFCZ,THSIJ,TL
       REAL :: CWML,EXNSFC,G_INV,PLYR,PSURF,ROG,SFCZ,THSIJ,TL,ZOQING
-      REAL :: TEND
+      REAL :: TEND, TEMPDX,TEMPDY
 #ifdef HWRF
 !zhang's doing 
       REAL :: TSTART
@@ -316,6 +318,41 @@
 ! Sam's doing for hour 0 & 6 nest movement safeguards
         grid%nomove_freq_hr=config_flags%nomove_freq
 #endif
+
+      ! Recalculate grid bounds, regardless of reason for
+      ! start_domain_nmm call, or version of NMM:
+      if(grid%id /= 1) then
+3302     format('Grid ',I0,' calculating west/south bounds relative to parent grid ',I0)
+         write(message,3302) grid%id, grid%parents(1)%ptr%id
+         call wrf_debug(2,message)
+         if(grid%id==1) then
+            call wrf_error_fatal('should not get here for MOAD')
+         endif
+         tempdx=grid%parents(1)%ptr%dx/grid%parent_grid_ratio
+         tempdy=grid%parents(1)%ptr%dy/grid%parent_grid_ratio
+         grid%wbd0var = grid%parents(1)%ptr%wbd0var + (grid%i_parent_start-1)*2.*grid%parents(1)%ptr%dx + mod(grid%j_parent_start+1,2)*grid%parents(1)%ptr%dx
+         grid%sbd0var = grid%parents(1)%ptr%sbd0var + (grid%j_parent_start-1)*grid%parents(1)%ptr%dy
+3303     format('Parent wbd0=',F0.3,' sbd0=',F0.3,' i_parent_start=',I0,' j_parent_start=',I0)
+         write(message,3303) grid%parents(1)%ptr%wbd0var, &
+              grid%parents(1)%ptr%sbd0var, grid%i_parent_start,grid%j_parent_start
+         call wrf_debug(1,message)
+      else
+         if(grid%id>1) then
+            call wrf_error_fatal('should not get here for nest')
+         endif
+         call nl_get_dx(grid%id,tempdx)
+         call nl_get_dy(grid%id,tempdy)
+         grid%wbd0var = -(IDE-2)*tempdx
+         grid%sbd0var = -((JDE-1)/2)*tempdy
+      endif
+      if(tempdx<1e-5 .or. tempdy<1e-5) then
+         write(message,1045) tempdx,tempdy
+         call wrf_message(message)
+1045     format('Error: dx or dy are invalid after parent recalculation or namelist check.  Must be >1e-5.  dx=',F0.7,' dy=',F0.7,'.  Giving up.')
+      endif
+      write(message,3011) grid%id,tempdx,tempdy,grid%wbd0var,grid%sbd0var
+      call wrf_debug(1,message)
+3011  format('Grid ',I0,': dx=',F0.3,' dy=',F0.3,' wbd0=',F0.3,' sbd0=',F0.3)
 
 #if 1
       IF(IME>NMM_MAX_DIM )THEN
@@ -600,7 +637,10 @@
 #ifdef HWRF
       if(allowed_to_read .and. config_flags%high_freq) then
         if(grid%id==config_flags%high_dom) then
+           ! Open HTCF LUN:
            call HIFREQ_OPEN(grid,config_flags)
+           ! Open per-nest-move ATCF LUN:
+           call HIFREQ_OPEN(grid,config_flags,atcf=.true.)
         elseif(config_flags%high_dom==-99) then
           nestless=.true.
            CALL nl_get_max_dom( 1, max_dom )
@@ -616,7 +656,10 @@
               endif
            enddo nestdo
            if(nestless) then
-              call HIFREQ_OPEN(grid,config_flags)
+              ! Open HTCF LUN:
+               call HIFREQ_OPEN(grid,config_flags)
+              ! Open per-nest-move ATCF LUN:
+              call HIFREQ_OPEN(grid,config_flags,atcf=.true.)
            endif
         else
            write(message,'("Domain ",I0," does not have hifreq out.")') grid%id
@@ -626,6 +669,13 @@
       endif
 ! end of high-freq output
 #endif
+
+! Begin Sam Trahan's doing for Tornado Genesis (SPC) products
+      if(anal .or. (allowed_to_read .and. .not. restrt)) then
+         call init_tornado_genesis(grid,config_flags)
+      endif
+! End Sam Trahan's doing for Tornado Genesis (SPC) products
+
 #ifdef HWRF
 ! Begin Sam Trahan's doing for vortex tracker initialization
     IF ( program_name(1:8) .NE. "REAL_NMM" ) THEN
@@ -634,7 +684,12 @@
                             IDS,IDE,JDS,JDE,KDS,KDE, &
                             IMS,IME,JMS,JME,KMS,KME, &
                             ITS,ITE,JTS,JTE,KTS,KTE)
-      ENDIF
+         call init_swath(grid, config_flags, &
+              (allowed_to_read .and. .not. restrt) )
+    ENDIF
+    IF(ANAL .or. allowed_to_read) THEN
+       grid%update_interest=.true.
+    ENDIF
 ! End Sam Trahan's doing for vortex tracker initialization
 #endif
 #ifdef HWRF
