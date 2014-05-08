@@ -1446,11 +1446,11 @@ SUBROUTINE ext_ncd_open_for_write_commit(DataHandle, Status)
   if ( DH%nofill ) then
     Status = NF_SET_FILL(DH%NCID,NF_NOFILL, oldmode )
     if(Status /= WRF_NO_ERR) then
-      write(msg,*) 'Warning Status = ',Status,' from NF_SET_FILL ',__FILE__,',line', __LINE__              
+      write(msg,*) 'Warning Status = ',Status,' from NF_SET_FILL ',__FILE__,', line', __LINE__
       call wrf_debug ( WARN , TRIM(msg)) 
       return
     endif
-    write(msg,*) 'Information: NOFILL being set for writing to ',TRIM(DH%FileName)                      
+    write(msg,*) 'Information: NOFILL being set for writing to ',TRIM(DH%FileName)
     call wrf_debug ( WARN , TRIM(msg)) 
   endif
   stat = NF_ENDDEF(DH%NCID)

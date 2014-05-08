@@ -255,13 +255,11 @@ SUBROUTINE wrf_open_for_write_begin( FileName , Comm_compute, Comm_io, SysDepInf
           ELSE
             LocFilename = FileName
           ENDIF
-!zz          CALL ext_ncd_open_for_write_begin ( LocFileName , Comm_compute, Comm_io, SysDepInfo, &
-!zz                                              Hndl , Status )
           IF ( ncd_nofill ) THEN
-            CALL ext_ncd_open_for_write_begin ( LocFileName , Comm_compute,Comm_io, SysDepInfo // ",NOFILL=.TRUE.", & 
+            CALL ext_ncd_open_for_write_begin ( LocFileName , Comm_compute, Comm_io, SysDepInfo // ",NOFILL=.TRUE.", &
                                                 Hndl , Status )
           ELSE
-            CALL ext_ncd_open_for_write_begin ( LocFileName , Comm_compute,Comm_io, SysDepInfo, &               
+            CALL ext_ncd_open_for_write_begin ( LocFileName , Comm_compute, Comm_io, SysDepInfo, &
                                                 Hndl , Status )
           ENDIF
         ENDIF
@@ -392,13 +390,11 @@ SUBROUTINE wrf_open_for_write_begin( FileName , Comm_compute, Comm_io, SysDepInf
     END SELECT
   ELSE ! use_output_servers_for(io_form)
     IF ( io_form .GT. 0 ) THEN
-!zz      CALL wrf_quilt_open_for_write_begin ( FileName , Comm_compute, Comm_io, SysDepInfo, &
-!zz                                            Hndl , io_form, Status )
       IF ( ncd_nofill ) THEN
-        CALL wrf_quilt_open_for_write_begin ( FileName , Comm_compute,Comm_io,TRIM(SysDepInfo) // ",NOFILL=.TRUE.", &
+        CALL wrf_quilt_open_for_write_begin ( FileName , Comm_compute, Comm_io, TRIM(SysDepInfo) // ",NOFILL=.TRUE.", &
                                               Hndl , io_form, Status )
       ELSE
-        CALL wrf_quilt_open_for_write_begin ( FileName , Comm_compute, Comm_io,SysDepInfo, &                       
+        CALL wrf_quilt_open_for_write_begin ( FileName , Comm_compute, Comm_io, SysDepInfo, &
                                               Hndl , io_form, Status )
       ENDIF
     ENDIF
