@@ -118,7 +118,7 @@ CONTAINS
                                         DT
 
       real,    INTENT(IN) ::            ens_ranvar,rrc         !Zhang
-      integer, INTENT(IN) ::            ens_random_seed    !Zhang
+      integer             ::            ens_random_seed    !Zhang
       REAL, OPTIONAL, INTENT(IN) :: PGCON,sas_mass_flux,shal_pgcon
       INTEGER, OPTIONAL, INTENT(IN) :: shalconv
       REAL(kind=kind_phys)       :: PGCON_USE,SHAL_PGCON_USE,massf
@@ -2718,10 +2718,14 @@ CONTAINS
       real :: rr,rrc,ens_ranvar       !zhang
       integer :: ens_random_seed         !zhang
       real*8 :: gasdev,ran1            !zhang
+      INTEGER :: PERT_SAS   !Zhang: 0 no pert, 1 sas pert 
       parameter (tf=233.16, tcr=263.16, tcrf=1.0/(tcr-tf))
 !
 !c-----------------------------------------------------------------------
 !
+#if HWRF==1
+      CALL nl_get_pert_sas(1,pert_sas)
+#endif
 
       km1 = km - 1
 !c
@@ -3046,15 +3050,15 @@ CONTAINS
           cincr = cincrmax - tem * tem1
           pbcdif(i) = pfld(i,kb(i)) - pfld(i,kbcon(i))
 ! randomly perturb the convection trigger
-          if(rrc .gt. 0.0) then
+          if(rrc .gt. 0.0 .and. pert_sas .eq. 1 ) then
  888      rr=ens_ranvar*ran1(ens_random_seed)-rrc+cincr     !White noise
 !zz 888      rr=ens_ranvar*gasdev(ens_random_seed)+cincr    !Gaussian Distribution                
 !zz          if (rr .ge. cincrmax+rrc) goto 888             !Gaussian Distribution            
 !zz          if (rr .le. cincrmin-rrc) goto 888             !Gaussian Distribution            
-!ZZZZZZ          print*, "zhang in sas condition rr",pbcdif(i),rr,cincr
+!          print*, "zhang in sas condition rr",pbcdif(i),rr,cincr
           else
           rr=cincr
-!ZZZZZZ          print*, "zhang in sas no pert rr",rr,cincr
+!          print*, "zhang in sas no pert rr",rr,cincr
           endif
           if(pbcdif(i).gt.rr) then
 !zz          if(pbcdif(i).gt.cincr) then

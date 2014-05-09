@@ -943,6 +943,7 @@
       LOGICAL :: FQ_I, ETAMP_PHYSICS,ETAMP_Regional            !BSF
 
       CHARACTER(len=255) :: message
+      INTEGER,save :: Iens_random_seed     !Zhang
 #if HWRF==1
 !dbg integer :: kpblmin,kpblmax,lpblmin,lpblmax    !dbg
 #endif
@@ -1482,6 +1483,14 @@
 !      write(0,*) 'var_ric & coef_ric_s l from namelist Kwon  ',var_ric,coef_ric_s,coef_ric_l
 #endif
 !
+      if (NTSD .eq. 0 ) then
+      Iens_random_seed=grid%ens_random_seed
+      endif
+!      print*, "zhang test00", Iens_random_seed            
+!      print*, "zhang test0", grid%id,grid%ens_random_seed             
+!      print*, "zhang test1", grid%id,grid%ens_ranvar
+!      print*, "zhang test2", grid%id,grid%ntsd
+!      print*, "zhang test3", grid%id,grid%rrc
       CALL PBL_DRIVER(                                                &
      &                ITIMESTEP=NTSD,DT=DT                            &
      &               ,U_FRAME=U_FRAME,V_FRAME=V_FRAME                 &
@@ -1544,7 +1553,9 @@
      &               ,HOL=HOL,sf_sfclay_physics=CONFIG_FLAGS%SF_SFCLAY_PHYSICS &
      &               ,IS_CAMMGMP_USED=IS_CAMMGMP_USED                 &
      &               ,wstar=wstar_ysu,delta=delta_ysu                 &
-     &               ,sf_urban_physics=CONFIG_FLAGS%SF_URBAN_PHYSICS)
+     &               ,sf_urban_physics=CONFIG_FLAGS%SF_URBAN_PHYSICS  & !zhang      
+     &               ,Iens_random_seed=Iens_random_seed               & !zhang 
+     &               ,ens_ranvar=grid%ens_ranvar,rrc=grid%rrc)          !zhang
 !
 !***  NOTE THAT THE EXCHANGE COEFFICIENTS FOR HEAT EXCH_H COMING OUT OF
 !***  PBL_DRIVER ARE DEFINED AT THE TOPS OF THE LAYERS KTS TO KTE-1

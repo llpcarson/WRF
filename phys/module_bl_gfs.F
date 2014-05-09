@@ -22,6 +22,7 @@ CONTAINS
                   VAR_RIC,                                         &    !Kwon for variable Ric
                   U10,V10,ZNT,MZNT,rc2d,                           &    !Kwon for variable Ric
                   DKU3D,DKT3D,coef_ric_l,coef_ric_s,xland,         &    !Kwon for variable Ric
+                  ens_random_seed,ens_ranvar,rrc,                  & !Zhang for PBL perturbation                 
 #endif
                   ids,ide, jds,jde, kds,kde,                       &
                   ims,ime, jms,jme, kms,kme,                       &
@@ -250,6 +251,8 @@ CONTAINS
                                         KX,                             &
                                         L,                              & 
                                         NTRAC
+      real,    INTENT(IN) ::            ens_ranvar,rrc         !Zhang
+      integer ::                ens_random_seed    !Zhang
 
    IM=ITE-ITS+1
    KX=KTE-KTS+1
@@ -353,6 +356,7 @@ CONTAINS
                   DELTIM,DUSFC,DVSFC,DTSFC,DQSFC,HPBL,HGAMT,            &
 #if (HWRF==1)
                VAR_RIC,Ro,DKU,DKT,coef_ric_l,coef_ric_s,xland1,  &
+               ens_random_seed,ens_ranvar,rrc,                   & !Zhang for PBL perturbation
 #endif
                 RBCR,HGAMQ,ALPHA)
 
@@ -509,6 +513,7 @@ CONTAINS
      &     DUSFC,DVSFC,DTSFC,DQSFC,HPBL,HGAMT,                     &
 #if (HWRF==1)
            VAR_RIC,Ro,DKU,DKT,coef_ric_l,coef_ric_s,xland1,   &
+           ens_random_seed,ens_ranvar,rrc,                    & !Zhang for PBL perturbation
 #endif
            RBCR,HGAMQ,ALPHA)
 !
@@ -601,6 +606,14 @@ real(kind=kind_phys) RO(IM),xland1(IM)
       PARAMETER(GAMCRT=3.,GAMCRQ=0.)
       PARAMETER(RZERO=0.,RONE=1.)
       PARAMETER(IUN=84)
+      real*8 :: ran1           !zhang
+      real    ::            rr         !Zhang
+      real,    INTENT(IN) ::            ens_ranvar,rrc         !Zhang
+      integer ::            ens_random_seed    !Zhang
+      INTEGER :: PERT_PBL   !Zhang: 0 no pert, 1 sas only,2 pbl only, 3 both 
+#if HWRF==1
+      CALL nl_get_pert_pbl(1,pert_pbl) 
+#endif
 !
 !
 !-----------------------------------------------------------------------
@@ -837,6 +850,14 @@ real(kind=kind_phys) RO(IM),xland1(IM)
                RBINT = (RBCR(I)-RBDN(I))/(RBUP(I)-RBDN(I))
             ENDIF
             HPBL(I) = ZL(I,K-1) + RBINT*(ZL(I,k)-ZL(I,K-1))
+!zhang adding PBL perturtion
+            rr=(40.0*ran1(ens_random_seed)-20.0)*0.01
+!            print*, "zhangPBL ==", rr*100., HPBL(I)
+            if (rrc .gt. 0.0 .and. pert_pbl .eq. 1 ) then
+            HPBL(I) = HPBL(I)*(1.0+rr)
+            endif
+!            print*, "zhangPBL xx", rr*100., HPBL(I)
+!zhang end of PBL perturbation
             IF(HPBL(I).LT.ZI(I,KPBL(I))) KPBL(I) = KPBL(I) - 1
             IF(KPBL(I).LE.1) PBLFLG(I) = .FALSE.
          ENDIF

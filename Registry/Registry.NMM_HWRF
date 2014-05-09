@@ -1317,8 +1317,10 @@ rconfig   real    coef_ric_s              namelist,physics      1             0.
 rconfig   integer random_seed             namelist,physics     max_domains    0       irh    "random_seed"  "random number generator seed"
 #added by Zhan Zhang for perturbing convection trigger
 rconfig   integer ens_random_seed         namelist,physics     max_domains   -1       irh   "ens_random_seed"  "ensemble random number generator initial seed"
-rconfig   real    ens_ranvar              namelist,physics     max_domains   0.5      irh   "ens_ranvar"  "ensemble random number generator standard dev."
-rconfig   real    rrc                     namelist,physics     max_domains   0.5      irh   "rrc"  "ensemble threshold"
+rconfig   real    ens_ranvar              namelist,physics     max_domains  100.      irh   "ens_ranvar"  "ensemble random number generator standard dev."
+rconfig   real    rrc                     namelist,physics     max_domains  -50.      irh   "rrc"  "ensemble threshold"
+rconfig   integer pert_sas                namelist,physics      1              0      irh   "pert_sas"  "ensemble choice:0, no pert, 1, pert SAS"
+rconfig   integer pert_pbl                namelist,physics      1              0      irh   "pert_pbl"  "ensemble choice:0, no pert, 1, pert PBL"
 
 # Vortex Tracking (physics namelist)
 rconfig   integer vortex_tracker          namelist,physics      max_domains    1      -      "vortex_tracker" "Vortex Tracking Algorithm" ""

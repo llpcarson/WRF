@@ -762,10 +762,10 @@ CONTAINS
           END IF
           CALL wrf_debug(100,'in cu_sas')
           if (grid%ntsd .eq. 0 ) Iens_random_seed=grid%ens_random_seed
-          print*, "zhang test0", grid%id,grid%ens_random_seed, Iens_random_seed                 
-          print*, "zhang test1", grid%id,grid%ens_ranvar
-          print*, "zhang test2", grid%id,grid%ntsd
-          print*, "zhang test3", grid%id,grid%rrc
+!         print*, "zhang test0", grid%id,grid%ens_random_seed, Iens_random_seed                 
+!         print*, "zhang test1", grid%id,grid%ens_ranvar
+!         print*, "zhang test2", grid%id,grid%ntsd
+!         print*, "zhang test3", grid%id,grid%rrc
           CALL CU_SAS(                                          &
                 DT=dt,ITIMESTEP=itimestep,STEPCU=STEPCU         &
                ,RTHCUTEN=RTHCUTEN,RQVCUTEN=RQVCUTEN             &

@@ -77,6 +77,7 @@ CONTAINS
                ,b_u_bep,b_v_bep,b_t_bep,b_q_bep            &
                ,sf_bep,vl_bep                              &
                ,sf_sfclay_physics,sf_urban_physics         &
+               ,Iens_random_seed,ens_ranvar,rrc            &    !zhang
                ,tke_pbl,el_pbl                             &
 #if (NMM_CORE != 1)
                ,wu_tur,wv_tur,wt_tur,wq_tur &
@@ -694,6 +695,8 @@ CONTAINS
    real seamask,thsk,zzz,unew,vnew,tnew,qnew,umom,vmom
    REAL :: z0,z1,z2,w1,w2
 
+   INTEGER :: Iens_random_seed     !Zhang
+   REAL :: ens_ranvar,rrc     !Zhang
 !------------------------------------------------------------------
 !
 !!!!!!!if using BEP set flag_bep to true
@@ -1169,6 +1172,9 @@ CONTAINS
                 PRESENT( rqvblten ) .AND. PRESENT( rqcblten ) .AND. &
                                                         .TRUE.  ) THEN
              CALL wrf_debug(100,'in GFS')
+!          print*, "zhang gfs_PBL1", Iens_random_seed
+!          print*, "zhang gfs_PBL2", ens_ranvar
+!          print*, "zhang gfs_PBL3", rrc
              CALL bl_gfs(                                           &
                U3D=u_phytmp,V3D=v_phytmp                            &
               ,TH3D=th_phy,T3D=t_phy                                &
@@ -1193,6 +1199,10 @@ CONTAINS
               ,U10=U10,V10=V10,ZNT=ZNT,MZNT=MZNT,RC2D=RC2D          &   !Kwon for variable Ric
               ,DKU3D=DKU3D,DKT3D=DKT3D                              &
               ,coef_ric_l=coef_ric_l,coef_ric_s=coef_ric_s,xland=xland    &
+              ,ens_random_seed=Iens_random_seed,ens_ranvar=ens_ranvar &
+!Zhang
+              ,rrc=rrc                                    &
+!Zhang
 #endif
               ,P_QI=p_qi,P_FIRST_SCALAR=param_first_scalar          &
               ,IDS=ids,IDE=ide,JDS=jds,JDE=jde,KDS=kds,KDE=kde      &
