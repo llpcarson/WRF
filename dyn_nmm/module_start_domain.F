@@ -1,28 +1,52 @@
 module module_start_domain
 
   use module_domain, only: domain, get_ijk_from_grid
-  use module_model_constants, only: r_d, cp, g
+  use module_model_constants, only: r_d, cp, g, p608, pq0, a2, a3, a4, r_v, &
+       cm1, cm2, cm3, epsq2, epsq, phitp, pmdhi, p400, plomd, z0land, z0sea
   use module_configure, only: model_to_grid_config_rec, &
-       grid_config_rec_type, in_use_for_config
-  use module_mpp, only: nest, restrt, anal
+       grid_config_rec_type, in_use_for_config, model_config_rec_type, &
+       model_config_rec
+  use module_CTLBLK, only: nest, restrt,IM,JM,LM, IDAT
 
   implicit none
 
   private
   public :: start_domain_main
 
-  logical :: allowed_to_read,is_real_nmm
+  ! ----------------------------------------------------------------
+  ! Flags that describe the conditions under which start_domain_main
+  ! called
+  logical :: allowed_to_read,is_real_nmm,anal
+  ! ----------------------------------------------------------------
+  ! Dimension (x,y,z,t) and padding variables 
+  integer :: &
+       IDS,IDE,JDS,JDE,KDS,KDE,& ! domain size
+       IMS,IME,JMS,JME,KMS,KME,& ! memory size
+       IPS,IPE,JPS,JPE,KPS,KPE,& ! patch (MPI) size
+       ITS,ITE,JTS,JTE,KTS,KTE,& ! tile (OpenMP) size
+       IFS,IFE,JFS,JFE,KFS,KFE,& ! portion of tile in use
+       JTPAD2,JBPAD2,IRPAD2,ILPAD2 ! padding in each dimension
+  integer :: NSTART
+  logical :: S_BDY, N_BDY, W_BDY, E_BDY ! Are we at this boundary?
 
-  real, parameter :: capa=r_d/cp, g_inv=1./g, rog=r_d*g_inv
-  logical :: S_BDY, N_BDY, W_BDY, E_BDY
-  integer :: LM, &
-       IDS,IDE,JDS,JDE,KDS,KDE,&
-       IMS,IME,JMS,JME,KMS,KME,&
-       IPS,IPE,JPS,JPE,KPS,KPE,&
-       ITS,ITE,JTS,JTE,KTS,KTE,&
-       IFS,IFE,JFS,JFE,KFS,KFE,&
-       JTPAD2,JBPAD2,IRPAD2,ILPAD2
-  real :: tstart
+  real :: tstart ! copy of grid%tstart - initial forecast hour
+  ! ----------------------------------------------------------------
+  ! Constants:
+  REAL, PARAMETER :: LAPSR=6.5E-3, GI=1./G,D608=0.608
+  REAL, PARAMETER :: COEF3=287.05*GI*LAPSR, COEF2=-1./COEF3
+  REAL, PARAMETER :: TRG=2.0*R_D*GI,LAPSI=1.0/LAPSR
+  REAL, PARAMETER :: capa=R_d/cp, g_inv=1./g, rog=R_d*g_inv
+  REAL, PARAMETER, DIMENSION(0:30) :: VZ0TBL_24 = (/0.,     &
+       1.00,  0.07,  0.07,  0.07,  0.07,  0.15,             &
+       0.08,  0.03,  0.05,  0.86,  0.80,  0.85,             &
+       2.65,  1.09,  0.80,  0.001, 0.04,  0.05,             &
+       0.01,  0.04,  0.06,  0.05,  0.03,  0.001,            &
+       0.000, 0.000, 0.000, 0.000, 0.000, 0.000 /)
+  ! ----------------------------------------------------------------
+  ! For convenience, a variable to use to compute messages for
+  ! wrf_message, wrf_debug or wrf_error_fatal:
+  character*255 :: message
+  ! ----------------------------------------------------------------
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     INTEGER,ALLOCATABLE,DIMENSION(:,:) :: ITEMP,LOWLYR
@@ -60,7 +84,7 @@ module module_start_domain
 contains
 
   subroutine sd_dealloc()
-#define dealloc_if(X) if(allocated(x)) deallocate(x)
+#define dealloc_if(X) if(allocated(X)) deallocate(X)
     dealloc_if(ITEMP)
     dealloc_if(LOWLYR)
     dealloc_if(SFULL)
@@ -126,12 +150,11 @@ contains
 
 #if defined( HWRF )
   ! HWRF-specific initialization
-  subroutine sd_coupling(gridid,DTC)
+  subroutine sd_coupling(grid)
+    use module_domain_type, only: domain
     implicit none
-    real, intent(out) :: DTC
-    integer, intent(in) :: gridid
+    type(domain), intent(inout) :: grid
     type(grid_config_rec_type) :: config_flags
-    character*255 :: message
 
     real :: dt
     integer :: nphs,movemin
@@ -148,7 +171,7 @@ contains
        ! dt*nphs*movemin = coupling timestep
        ! So if there is a domain 2, we'll use that to
        ! guess the coupling timestep.
-       if(gridid==1) then
+       if(grid%id==1) then
           ! The first time this routine is called, it is for domain 1,
           ! and domain 2 has not been created yet.  That means domain
           ! 2 still has its dt set to the internal WRF default of 2.
@@ -173,9 +196,9 @@ contains
     nphs=config_flags%nphs
     movemin=config_flags%movemin
 
-    dtc = dt*nphs*movemin
+    grid%guessdtc = dt*nphs*movemin
 388 format("dtc=dt*nphs*movemin = ",F0.3,"=",F0.3,"*",I0,"*",I0)
-    write(message,388) dtc,dt,nphs,movemin
+    write(message,388) grid%guessdtc,dt,nphs,movemin
     call wrf_message(message)
   end subroutine sd_coupling
 
@@ -187,14 +210,13 @@ contains
     use module_clear_halos, only: clear_ij_halos
     type(domain) :: grid
     type(grid_config_rec_type) :: config_flags
-    call clear_ij_halos(grid,config_flags)
+    call clear_ij_halos(grid,config_flags%halo_debug)
   end subroutine sd_clear_halos
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   subroutine sd_grid_bounds(grid)
     use module_domain_type, only: domain
     type(domain), intent(inout) :: grid
-    character*255 :: message
     real :: tempdx, tempdy
 
     call get_ijk_from_grid(grid,                    &
@@ -288,21 +310,20 @@ contains
     use module_CTLBLK
     use module_domain_type, only: domain
     type(domain), intent(inout) :: grid
-    character*255 :: message
     integer :: interval_seconds, restart_interval
 
     IF(IME>NMM_MAX_DIM )THEN
-       WRITE(wrf_err_message,*)                                       &
+       WRITE(message,*)                                       &
             'start_domain_nmm ime (',ime,') > ',NMM_MAX_DIM,    &
             '. Increase NMM_MAX_DIM in configure.wrf, clean, and recompile.'
-       CALL WRF_ERROR_FATAL(wrf_err_message)
+       CALL WRF_ERROR_FATAL(message)
     ENDIF
     !
     IF(JME>NMM_MAX_DIM )THEN
-       WRITE(wrf_err_message,*)                                       &
+       WRITE(message,*)                                       &
             'start_domain_nmm jme (',jme,') > ',NMM_MAX_DIM,    &
             '. Increase NMM_MAX_DIM in configure.wrf, clean, and recompile.'
-       CALL WRF_ERROR_FATAL(wrf_err_message)
+       CALL WRF_ERROR_FATAL(message)
     ENDIF
 
     WRITE(message,196)IHRST,IDAT
@@ -315,8 +336,8 @@ contains
     CALL nl_get_interval_seconds(GRID%ID, interval_seconds)
     CALL nl_get_restart_interval(GRID%ID, restart_interval)
     IF (MOD(restart_interval*60,interval_seconds) /= 0) THEN
-       WRITE(wrf_err_message,*)' restart_interval is not integer multiplier of interval_seconds'
-       CALL WRF_ERROR_FATAL(wrf_err_message)
+       WRITE(message,*)' restart_interval is not integer multiplier of interval_seconds'
+       CALL WRF_ERROR_FATAL(message)
     END IF
 
   end subroutine sd_grid_sanity
@@ -327,7 +348,6 @@ contains
     use module_mpp
     use module_domain_type, only: domain
     type(domain), intent(inout) :: grid
-    character*255 :: message
 
 !!!! For now, set NPES to 1
     NPES=1
@@ -392,14 +412,26 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine sd_halos(grid,all)
+  subroutine sd_halos(grid,config_flags,all &
+!
+#include <dummy_new_args.inc>
+!
+)
+    use module_state_description ! various num_whatevers
     use module_mpp, only: mype
     use module_dm, only: ntasks_x, ntasks_y, mytask, ntasks, &
-         local_communicator, wrf_get_myproc
+         local_communicator
     use module_domain_type, only: domain
+    type(grid_config_rec_type) :: config_flags
+    logical, intent(in) :: all
     type(domain), intent(inout) :: grid
     integer :: myproc
-    character*255 :: message
+
+    ! Put the new_decl last so that the useless Intel compiler gives
+    ! messages about actual variables first, before giving up.
+!
+#include <dummy_new_decl.inc>
+!
 
 #ifdef DM_PARALLEL
 
@@ -492,10 +524,11 @@ contains
     ENDDO
   end subroutine sd_j_const
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine sd_random(grid)
+  subroutine sd_random(grid,config_flags)
     use module_domain_type, only: domain
     type(domain), intent(inout) :: grid
-    character*255 :: message
+    type(grid_config_rec_type) :: config_flags
+    integer(kind=4) :: random_seed
     integer :: one
 
     randif: IF(in_use_for_config(grid%id,'random'))THEN
@@ -528,9 +561,10 @@ contains
 #ifdef HWRF
   subroutine sd_hifreq(grid,config_flags)
     use module_hifreq, only : hifreq_open
-
     type(domain) :: grid
     type(grid_config_rec_type) :: config_flags
+    logical :: nestless,grid_allowed
+    integer :: max_dom,nestid,parent_id
     if(grid%id==config_flags%high_dom) then
        ! Open HTCF LUN:
        call HIFREQ_OPEN(grid,config_flags)
@@ -592,8 +626,12 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   subroutine sd_clean_start(grid)
+    use module_domain_type, only: domain
+    type(domain), intent(inout) :: grid
+
     integer :: i, j, k
     real :: rg, ht, pm1, apem1, tsfck, psfck, term1, eps, cloges, ese
+
     DO J=JFS,JFE
        DO I=IFS,IFE
           grid%pdsl(I,J)  =grid%pd(I,J)*grid%res(I,J)
@@ -828,26 +866,28 @@ contains
     type(domain) :: grid
     type(grid_config_rec_type) :: config_flags
     integer :: i, j
-       DO J=JFS,JFE
-          DO I=IFS,IFE
-             !
-             IF(grid%t(I,J,KTS)==0.)THEN
-                grid%t(I,J,KTS)=grid%t(I,J,KTS+1)
-             ENDIF
-             !
-             TERM1=-0.068283/grid%t(I,J,KTS)
-             grid%pshltr(I,J)=(grid%pd(I,J)+grid%pdtop+grid%pt)*EXP(TERM1)
-          ENDDO
+    real :: term1
+    DO J=JFS,JFE
+       DO I=IFS,IFE
+          !
+          IF(grid%t(I,J,KTS)==0.)THEN
+             grid%t(I,J,KTS)=grid%t(I,J,KTS+1)
+          ENDIF
+          !
+          TERM1=-0.068283/grid%t(I,J,KTS)
+          grid%pshltr(I,J)=(grid%pd(I,J)+grid%pdtop+grid%pt)*EXP(TERM1)
        ENDDO
-    ENDIF
+    ENDDO
 
-  end subroutine sd_clear_halos
+  end subroutine sd_fix_0_T
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   subroutine sd_restart_initializing(grid)
     use module_MPP
     use module_CTLBLK
+    use module_domain_type, only: domain
     implicit none
+    type(domain), intent(inout) :: grid
     integer :: i, j
     TSPH=3600./GRID%DT ! needed?
     grid%nphs0=GRID%NPHS
@@ -858,22 +898,22 @@ contains
 #endif
     
       IF(MYPE==0)THEN
-        WRITE( wrf_err_message, * )' start_nmm TSTART=',grid%tstart
-        CALL wrf_debug( 1, TRIM(wrf_err_message) )
-        WRITE( wrf_err_message, * )' start_nmm TPREC=',grid%tprec
-        CALL wrf_debug( 1, TRIM(wrf_err_message) )
-        WRITE( wrf_err_message, * )' start_nmm THEAT=',grid%theat
-        CALL wrf_debug( 1, TRIM(wrf_err_message) )
-        WRITE( wrf_err_message, * )' start_nmm TCLOD=',grid%tclod
-        CALL wrf_debug( 1, TRIM(wrf_err_message) )
-        WRITE( wrf_err_message, * )' start_nmm TRDSW=',grid%trdsw
-        CALL wrf_debug( 1, TRIM(wrf_err_message) )
-        WRITE( wrf_err_message, * )' start_nmm TRDLW=',grid%trdlw
-        CALL wrf_debug( 1, TRIM(wrf_err_message) )
-        WRITE( wrf_err_message, * )' start_nmm TSRFC=',grid%tsrfc
-        CALL wrf_debug( 1, TRIM(wrf_err_message) )
-        WRITE( wrf_err_message, * )' start_nmm PCPFLG=',grid%pcpflg
-        CALL wrf_debug( 1, TRIM(wrf_err_message) )
+        WRITE( message, * )' start_nmm TSTART=',grid%tstart
+        CALL wrf_debug( 1, TRIM(message) )
+        WRITE( message, * )' start_nmm TPREC=',grid%tprec
+        CALL wrf_debug( 1, TRIM(message) )
+        WRITE( message, * )' start_nmm THEAT=',grid%theat
+        CALL wrf_debug( 1, TRIM(message) )
+        WRITE( message, * )' start_nmm TCLOD=',grid%tclod
+        CALL wrf_debug( 1, TRIM(message) )
+        WRITE( message, * )' start_nmm TRDSW=',grid%trdsw
+        CALL wrf_debug( 1, TRIM(message) )
+        WRITE( message, * )' start_nmm TRDLW=',grid%trdlw
+        CALL wrf_debug( 1, TRIM(message) )
+        WRITE( message, * )' start_nmm TSRFC=',grid%tsrfc
+        CALL wrf_debug( 1, TRIM(message) )
+        WRITE( message, * )' start_nmm PCPFLG=',grid%pcpflg
+        CALL wrf_debug( 1, TRIM(message) )
       ENDIF
 
       NSTART = INT(grid%TSTART*TSPH+0.5)
@@ -941,7 +981,9 @@ contains
 #ifndef NO_UPSTREAM_ADVECTION
   subroutine sd_upstream_advection(grid)
     use module_mpp
+    use module_domain_type, only: domain
     implicit none
+    type(domain), intent(inout) :: grid
     INTEGER :: ILPAD2,IRPAD2,JBPAD2,JTPAD2, I,J,K, II,JJ,KK
     INTEGER :: KNTI, ISTART,IEND, JAM, KNT
 !
@@ -1547,10 +1589,10 @@ contains
     !
 !!!!	SHOULD pint,z,w BE REDEFINED IF RESTRT?
 
-    WRITE( wrf_err_message, * )' restrt=',restrt,' nest=',nest
-    CALL wrf_debug( 0, TRIM(wrf_err_message) )
-    WRITE( wrf_err_message, * )' grid%pdtop=',grid%pdtop,' grid%pt=',grid%pt
-    CALL wrf_debug( 0, TRIM(wrf_err_message) )
+    WRITE( message, * )' restrt=',restrt,' nest=',nest
+    CALL wrf_debug( 0, TRIM(message) )
+    WRITE( message, * )' grid%pdtop=',grid%pdtop,' grid%pt=',grid%pt
+    CALL wrf_debug( 0, TRIM(message) )
 #ifdef HWRF
     !zhang's doing
     do_me=(.NOT.RESTRT.OR.NEST .OR. .NOT.allowed_to_read)
@@ -1640,6 +1682,7 @@ contains
     type(domain), intent(inout) :: grid
     integer :: i,j,jhh,jx,ihl,ix,ihh
     REAL, parameter :: EPSB=0.1,EPSIN=9.8
+    INTEGER, parameter :: JHL=7
     !----------------------------------------------------------------------
     !***  RESTRICTING THE ACCELERATION ALONG THE BOUNDARIES
     !----------------------------------------------------------------------
@@ -1717,9 +1760,16 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine sd_physics_init(grid)
+  subroutine sd_physics_init(grid, config_flags &
+!
+#include <dummy_new_args.inc>
+!
+)
+    use module_physics_init
+    use module_state_description ! various num_whatevers
     use module_domain_type, only: domain
-    use module_ext_internal
+    use module_symbols_util, only: WRFU_Time
+    use module_MPP
     implicit none
     type(grid_config_rec_type) :: config_flags
     type(domain), intent(inout) :: grid
@@ -1727,12 +1777,23 @@ contains
     TYPE(WRFU_Time) :: currentTime
     integer :: i, j, k, n
     real :: sfczpsurf, exnsfc, thsij, plyr, tl, cwml, pdtot, rpdtot, pdbot
-    real :: dsigsum, dsig
-    character*255 :: message
+    real :: dsigsum, dsig, sfcz, psurf
     integer :: num_ozmixm, num_aerosolc
-    logical :: start_of_simulation
-    INTEGER :: hr, mn, sec, ms, rc
 
+    ! ----------------------------------------------------------------
+    ! WARNING ! Probable error.  These are not initialized before
+    ! passing into phys_init:
+    logical :: WARM_RAIN, ADV_MOIST_COND, IS_CAMMGMP_USED
+    integer :: STEPBL,STEPRA,STEPCU, NUM_URBAN_LAYERS, NUM_URBAN_HI
+    ! ----------------------------------------------------------------
+
+    logical :: start_of_simulation, LRESTART, do_me
+    INTEGER :: hr, mn, sec, ms, rc
+    ! Put the new_decl last so that the useless Intel compiler gives
+    ! messages about actual variables first, before giving up.
+!
+#include <dummy_new_decl.inc>
+!
     ALLOCATE(SFULL(KMS:KME))           ; SFULL    = 0.
     ALLOCATE(SMID(KMS:KME))            ; SMID     = 0.
     ALLOCATE(EMISS(IMS:IME,JMS:JME))   ; EMISS    = 0.
@@ -1807,7 +1868,7 @@ contains
        DO K=KMS,KME
           DO J=JMS,JME
              DO I=IMS,IME
-                SCALAR_TRANS(I,K,J,N)=SCALAR(I,J,K,N)
+                SCALAR_TRANS(I,K,J,N)=grid%SCALAR(I,J,K,N)
              ENDDO
           ENDDO
        ENDDO
@@ -2014,22 +2075,33 @@ contains
     !mp replace F*_PHY with values defined in module_initialize_real.F?
 #ifdef HWRF
     IF (.NOT. RESTRT .and. ALLOWED_TO_READ) THEN   !zhang
-       moist = 0.0
+       grid%moist = 0.0
        if(size(grid%f_ice)>1) grid%f_ice = grid%f_ice_phy
        if(size(grid%f_rimef)>1) grid%f_rimef = grid%f_rimef_phy
        if(size(grid%f_rain)>1) grid%f_rain = grid%f_rain_phy
     ENDIF                  !zhang
 #endif
 
+    CALL domain_setgmtetc( GRID, START_OF_SIMULATION )
+
   end subroutine sd_physics_init
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine sd_copy_or_reset_phys(grid)
+  subroutine sd_copy_or_reset_phys(grid&
+!
+#include <dummy_new_args.inc>
+!
+    )
+    use module_state_description
     use module_domain_type, only: domain
     implicit none
     type(domain), intent(inout) :: grid
-    
+    logical :: do_me
+    integer :: i,j,k
+!
+#include <dummy_new_decl.inc>
+!
     !-----------------------------------------------------------------------
     !
 #ifdef HWRF
@@ -2058,7 +2130,8 @@ contains
        !mp replace F*_PHY with values defined in module_initialize_real.F?
 #ifdef HWRF
        IF (.NOT. RESTRT .and. ALLOWED_TO_READ) THEN   !zhang
-          moist = 0.0
+          call wrf_message("Zeroing out MOIST and setting F_* to F_*_phy values")
+          grid%moist = 0.0
           if(size(grid%f_ice)>1) grid%f_ice = grid%f_ice_phy
           if(size(grid%f_rimef)>1) grid%f_rimef = grid%f_rimef_phy
           if(size(grid%f_rain)>1) grid%f_rain = grid%f_rain_phy
@@ -2070,9 +2143,11 @@ contains
   end subroutine sd_copy_or_reset_phys
   
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine sd_calc_micro(grid)
+  subroutine sd_calc_micro(grid,MOIST)
+    use module_state_description
     use module_domain_type, only: domain
     implicit none
+    real, dimension(ims:ime,jms:jme,kms:kme,num_moist) :: MOIST
     type(domain), intent(inout) :: grid
     integer :: i,j,k,i_m
     LOGICAL :: ETAMP_Regional, ICE1_indx, ICE2_indx
@@ -2083,21 +2158,26 @@ contains
     have_valid_cwm: IF ( &
          .not. (MAXVAL(grid%cwm(ips:ipe,jps:jpe,:)).gt.0. &
          .and. MAXVAL(grid%cwm(ips:ipe,jps:jpe,:)).lt.1.) ) then    
-       do i_m = 2, num_moist
-          if (i_m.ne.p_qv) &
-               &       CALL wrf_message(' summing moist(:,:,:,i_m) into cwm array')
+       sum_into_CWM: do i_m = 2, num_moist
+          if (i_m.ne.p_qv) then
+             write(message,808) i_m
+808          format(' summing moist(:,:,:,',I0,') into CWM array')
+             call wrf_message(message)
+          else
+             cycle sum_into_CWM
+          endif
           DO K=KPS,KPE
              DO J=JFS,JFE
                 DO I=IFS,IFE
-                   IF ( (moist(I,J,K,i_m).gt.EPSQ) .and. (i_m.ne.p_qv) ) THEN  
+                   IF ( moist(I,J,K,i_m)>EPSQ ) THEN  
                       grid%cwm(I,J,K) = grid%cwm(I,J,K) + moist(I,J,K,i_m)               
                    ENDIF
                 enddo
              enddo
           enddo
-       enddo
+       enddo sum_into_CWM
 
-       IF (size(grid%f_ice)>1 .and. size(grid%f_rain)>1) then
+       reset_f_ice_rain: IF (size(grid%f_ice)>1 .and. size(grid%f_rain)>1) then
           IF( .not. ( (maxval(grid%f_ice(ips:ipe,:,jps:jpe)) &
                +maxval(grid%f_rain(ips:ipe,:,jps:jpe))) .gt. EPSQ) ) THEN
              ETAMP_Regional=.FALSE.    !-- Regional NAM or HRW (Ferrier) microphysics
@@ -2154,7 +2234,7 @@ contains
                 enddo
              endif
           ENDIF
-       ENDIF
+       ENDIF reset_f_ice_rain
     ENDIF have_valid_cwm
     ! End addition by Greg Thompson
 
@@ -2200,6 +2280,7 @@ contains
     use module_domain_type, only: domain
     implicit none
     type(domain), intent(inout) :: grid
+    integer :: i,j
     IF (.NOT. RESTRT) THEN
        !-- Replace albedos if original albedos are nonzero
        IF(MAXVAL(ALBEDO_DUM(ips:ipe,jps:jpe))>0.)THEN
@@ -2217,6 +2298,8 @@ contains
     use module_domain_type, only: domain
     implicit none
     type(domain), intent(inout) :: grid
+    logical :: do_me
+    integer :: i,j
 #ifdef HWRF
     do_me=(.NOT. RESTRT .OR. .NOT.allowed_to_read) 
     !zhang's doing
@@ -2231,7 +2314,7 @@ contains
           ENDDO
        ENDDO
     endif
-  end subroutine sd_zero_diag_arrays
+  end subroutine sd_reset_precip
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   subroutine sd_compute_ct_ct2(grid)
@@ -2249,11 +2332,13 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   subroutine sd_init_gwd(grid)
+    use module_MPP
     use module_domain_type, only: domain
     implicit none
     type(domain), intent(inout) :: grid
     integer :: i,j
     real :: dtphs,cen_lat,cen_lon
+    logical :: do_me
     !-----------------------------------------------------------------------
     !---- Initialization for gravity wave drag (GWD) & mountain blocking (MB)
     !
@@ -2295,24 +2380,21 @@ contains
     ! not being initialized (not the leading edge).)  Calling
     ! domain_setgmtetc() here will avoid this problem when NMM moves
     ! to moving nests.
-    CALL domain_setgmtetc( GRID, START_OF_SIMULATION )
 
     if(restrt) then
 #ifdef HWRF
-       ! FIXME: REMOVE THIS - THE CODE IN THE "ELSE" BLOCK IS CORRECT 
        !zhang 
        CALL nl_get_julyr (grid%id, grid%julyr)
        CALL nl_get_julday (grid%id, grid%julday)
        CALL nl_get_gmt (grid%id, grid%gmt)
        !zhang end
 #else
-       ! FIXME: THIS SHOULD BE USED FOR HWRF TOO
        CALL domain_clock_get( grid, current_time=currentTime )
        CALL WRFU_TimeGet( currentTime, YY=grid%julyr, dayOfYear=grid%julday, &
             H=hr, M=mn, S=sec, MS=ms, rc=rc)
        grid%gmt=hr+real(mn)/60.+real(sec)/3600.+real(ms)/(1000*3600)
-       WRITE( wrf_err_message , * ) 'DEBUG start_domain_nmm():  gmt = ',grid%gmt
-       CALL wrf_debug( 150, TRIM(wrf_err_message) )
+       WRITE( message , * ) 'DEBUG start_domain_nmm():  gmt = ',grid%gmt
+       CALL wrf_debug( 150, TRIM(message) )
 #endif
     endif
 
@@ -2320,53 +2402,33 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine sd_set_flags_after_phys_init(grid)
-    use module_domain_type, only: domain
-    implicit none
-    type(domain), intent(inout) :: grid
-    ! Several arguments are RCONFIG entries in Registry.NMM. Registry no longer
-    ! includes these as dummy arguments or declares them.  Access them from 
-    ! GRID.  JM 20050819
-#ifndef WRF_NMM_NEST
-    ! NOTE: we always get here for all NMM configurations because the
-    !       #if condition is wrong.  Leaving this as is, just in case
-    !       there was a good reason for it.
-    grid%moved = .FALSE.
-#endif
-
-    IF (GRID%RESTART) THEN
-       LRESTART = GRID%RESTART
-    ELSE
-       IF (grid%moved) THEN
-          LRESTART = .TRUE.
-       ELSE
-          LRESTART = .FALSE.
-       ENDIF
-    END IF
-    
-  end subroutine sd_set_flags_after_phys_init
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
   subroutine start_domain_main( &
        grid, allowed_to_read_ &
-                                !
+!
 #include <dummy_new_args.inc>
-       !
+!
     )
+    use module_state_description
     use module_mpp
     use module_configure, only: model_to_grid_config_rec, grid_config_rec_type
+    use module_domain_type, only: domain, program_name
 #ifdef HWRF
     USE module_tornado_genesis, only: init_tornado_genesis
     use module_stats_for_move, only: vorttrak_init
     use module_swath, only: init_swath
 #endif
     type(domain), intent(inout) :: grid
-    logical, intent(in) :: allowed_to_read
+    logical, intent(in) :: allowed_to_read_
 
     ! -- locals --
     type(grid_config_rec_type) :: config_flags
     logical :: doit
+
+    ! Put the new_decl last so that the useless Intel compiler gives
+    ! messages about actual variables first, before giving up.
+!
+#include <dummy_new_decl.inc>
+!
 
     call start_timing
     CALL model_to_grid_config_rec(grid%id,model_config_rec,config_flags)
@@ -2381,14 +2443,18 @@ contains
     call sd_grid_bounds(grid)
     call sd_grid_sanity(grid)
     call sd_set_mpp_bounds(grid)
-    call sd_halos(grid,all=.false.)
+    call sd_halos(grid,config_flags,.false. &
+!
+#include<actual_new_args.inc>
+!
+)
     if((allowed_to_read .and. .not. restrt) .or. anal) then
        call sd_refl(grid)
     end if
     call sd_j_const(grid)
 
     if((allowed_to_read.and..not.(restrt)) .or. .not.allowed_to_read) then
-       call sd_random(grid)
+       call sd_random(grid,config_flags)
     endif
 
     call sd_hires_diag(grid,config_flags)
@@ -2402,7 +2468,7 @@ contains
        call sd_clean_start(grid)
     endif dome
 
-    if(nest) call sd_fix_0_T(grid)
+    if(nest) call sd_fix_0_T(grid,config_flags)
 
     grid%nphs0=GRID%NPHS
 
@@ -2440,10 +2506,18 @@ contains
 
     !------------------------------------------------
     ! allocate massive amounts of data in this region
-    call sd_physics_init(grid)
-    call sd_copy_or_reset_phys(grid)
+    call sd_physics_init(grid,config_flags&
+!
+#include <actual_new_args.inc>
+!
+)
+    call sd_copy_or_reset_phys(grid&
+!
+#include <actual_new_args.inc>
+!
+)
     IF (.NOT. RESTRT .and. ALLOWED_TO_READ) THEN
-       call sd_calc_micro(grid)
+       call sd_calc_micro(grid,MOIST)
     ENDIF
 
 #ifdef HWRF
@@ -2460,14 +2534,17 @@ contains
     call sd_compte_ct_ct2(grid)
     call sd_init_gwd(grid)
     call sd_set_time(grid)
-    call sd_set_flags_after_phys_init(grid)
 
-    call sd_dealloc(grid)
+    call sd_dealloc()
     ! have deallocated huge data arrays
     !------------------------------------------------
 
     ! do halos
-    call sd_halos(grid,all=.true.) ! all = extra halo for MOIST & SCALAR
+    call sd_halos(grid,config_flags,.true. &
+!
+#include <actual_new_args.inc>
+!
+    )
 
     write(message,*) "Timing for start_domain on d",grid%id
     call end_timing(message)
