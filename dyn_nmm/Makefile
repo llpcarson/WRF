@@ -30,6 +30,7 @@ MODULES =                 		\
 	module_tracker.o		\
 	module_tornado_genesis.o	\
 	module_relax.o			\
+	module_start_domain.o           \
 	nmm_get_cpu.o                   \
 	$(CASE_MODULE)
 
