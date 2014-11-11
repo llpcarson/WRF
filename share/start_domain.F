@@ -44,7 +44,7 @@ SUBROUTINE start_domain ( grid , allowed_to_read )
                          )
 #endif
 #if (NMM_CORE == 1) 
-   CALL start_domain_nmm( grid, allowed_to_read   &
+   CALL start_domain_nmm_wrapper( grid, allowed_to_read   &
 !
 # include <actual_new_args.inc>
 !

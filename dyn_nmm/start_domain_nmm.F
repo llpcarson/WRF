@@ -50,6 +50,29 @@
           call wrf_message(message)
         END SUBROUTINE GUESS_COUPLING_TIMESTEP
 #endif
+!----------------------------------------------------------------------
+!
+      SUBROUTINE start_domain_nmm_wrapper(GRID, allowed_to_read &
+!
+#include <dummy_new_args.inc>
+!
+     &           )
+!----------------------------------------------------------------------
+        use module_domain_type, only: domain
+        use module_state_description
+        use module_start_domain
+        implicit none
+        type(domain), intent(inout) :: GRID
+        logical, intent(in) :: allowed_to_read
+!
+#include<dummy_new_decl.inc>
+!
+        call start_domain_main(grid,allowed_to_read&
+!
+#include<actual_new_args.inc>
+!
+)
+      END SUBROUTINE start_domain_nmm_wrapper
 !
 !----------------------------------------------------------------------
 !

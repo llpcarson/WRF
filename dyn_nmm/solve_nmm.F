@@ -294,7 +294,11 @@
            is_alarm_tstep_nphs(grid%domain_clock, grid%alarms(AUXHIST2_ALARM), grid%nphs) &
            .or. &
            is_alarm_tstep_nphs(grid%domain_clock, grid%alarms(AUXHIST3_ALARM), grid%nphs)
-
+      if(diag_flag) then
+         call wrf_debug(1,"It is diag time.")
+      else
+         call wrf_debug(1,"It is not diag time.")
+      endif
 !
 !-----------------------------------------------------------------------
 !

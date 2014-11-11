@@ -1,4 +1,4 @@
-      SUBROUTINE start_domain_nmm ( grid, allowed_to_read  &
+      SUBROUTINE start_domain_nmm_wrapper ( grid, allowed_to_read  &
 !
 #          include <dummy_new_args.inc>
 !
@@ -8,5 +8,5 @@
          TYPE(domain) , INTENT(INOUT)  :: grid
          LOGICAL      , INTENT(IN)     :: allowed_to_read
 #include <dummy_decl.inc>
-      END SUBROUTINE start_domain_nmm
+      END SUBROUTINE start_domain_nmm_wrapper
 

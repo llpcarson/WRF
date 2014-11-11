@@ -15,8 +15,14 @@ module module_start_domain
 
   ! ----------------------------------------------------------------
   ! Flags that describe the conditions under which start_domain_main
-  ! called
-  logical :: allowed_to_read,is_real_nmm,anal
+  ! was called
+  logical :: allowed_to_read !  = real_nmm OR first start OR restart
+  logical :: is_real_nmm     !  = called from real_nmm
+  logical :: anal            !  = first start after reading wrfanl file
+  ! These two variables are also used, and are set near the beginning
+  ! of start_domain_main:
+  !   module_CTLBLK  restrt     = restart OR nest move (NOT wrfanl)
+  !   module_CTLBLK  nest       = this domain is a nest
   ! ----------------------------------------------------------------
   ! Dimension (x,y,z,t) and padding variables 
   integer :: &
@@ -83,71 +89,7 @@ module module_start_domain
 
 contains
 
-  subroutine sd_dealloc()
-#define dealloc_if(X) if(allocated(X)) deallocate(X)
-    dealloc_if(ITEMP)
-    dealloc_if(LOWLYR)
-    dealloc_if(SFULL)
-    dealloc_if(SMID)
-    dealloc_if(DZS)
-    dealloc_if(ZS)
-    dealloc_if(RQCBLTEN)
-    dealloc_if(RQIBLTEN)
-    dealloc_if(RQVBLTEN)
-    dealloc_if(RTHBLTEN)
-    dealloc_if(RUBLTEN)
-    dealloc_if(RVBLTEN)
-    dealloc_if(RQCCUTEN)
-    dealloc_if(RQICUTEN)
-    dealloc_if(RQRCUTEN)
-    dealloc_if(RQSCUTEN)
-    dealloc_if(RQVCUTEN)
-    dealloc_if(RTHCUTEN)
-    dealloc_if(RUSHTEN)
-    dealloc_if(RVSHTEN)
-    dealloc_if(RQCSHTEN)
-    dealloc_if(RQISHTEN)
-    dealloc_if(RQRSHTEN)
-    dealloc_if(RQSSHTEN)
-    dealloc_if(RQVSHTEN)
-    dealloc_if(RTHSHTEN)
-    dealloc_if(RQGSHTEN)
-    dealloc_if(RTHRATEN)
-    dealloc_if(RTHRATENLW)
-    dealloc_if(RTHRATENSW)
-    dealloc_if(EMISS)
-    dealloc_if(EMTEMP)
-    dealloc_if(GLW)
-    dealloc_if(HFX)
-    dealloc_if(NCA)
-    dealloc_if(QFX)
-    dealloc_if(RAINBL)
-    dealloc_if(RAINC)
-    dealloc_if(RAINNC)
-    dealloc_if(RAINNCV)
-    dealloc_if(SNOWNC)
-    dealloc_if(SNOWNCV)
-    dealloc_if(GRAUPELNC)
-    dealloc_if(GRAUPELNCV)
-    dealloc_if(SNOWC)
-    dealloc_if(THC)
-    dealloc_if(TMN)
-    dealloc_if(TSFC)
-    dealloc_if(Z0_DUM)
-    dealloc_if(ALBEDO_DUM)
-    dealloc_if(ZINT)
-    dealloc_if(RRI)
-    dealloc_if(CONVFAC)
-    dealloc_if(ZMID)
-    dealloc_if(T_TRANS)
-    dealloc_if(PINT_TRANS)
-    dealloc_if(CLDFRA_TRANS)
-    dealloc_if(SCALAR_TRANS)
-    dealloc_if(CLDFRA_OLD)
-    dealloc_if(z_at_q)
-#undef dealloc_if
-  end subroutine sd_dealloc
-
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #if defined( HWRF )
   ! HWRF-specific initialization
   subroutine sd_coupling(grid)
@@ -218,6 +160,7 @@ contains
     use module_domain_type, only: domain
     type(domain), intent(inout) :: grid
     real :: tempdx, tempdy
+    integer :: i,j
 
     call get_ijk_from_grid(grid,                    &
          IDS,IDE,JDS,JDE,KDS,KDE, &
@@ -305,6 +248,54 @@ contains
     call wrf_debug(2,message)
 3011 format('Grid ',I0,': dx=',F0.3,' dy=',F0.3,' wbd0=',F0.3,' sbd0=',F0.3)
   end subroutine sd_grid_bounds
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  subroutine sd_nest_effect(grid)
+    use module_domain_type, only: domain
+    use module_relax, only: relax4e
+    implicit none
+    type(domain), intent(inout) :: grid
+    integer :: i,j
+
+    make_nest_effect: if(allowed_to_read) then
+       do j=jts,jte
+          do i=its,ite
+             grid%relaxwork(i,j)=1.0
+             grid%relaxmask(i,j)=.true.
+          enddo
+       enddo
+       if(n_bdy) then
+          grid%relaxwork(its:ite,jde-6:jde)=0.0
+          grid%relaxmask(its:ite,jde-6:jde)=.false.
+       endif
+       if(e_bdy) then
+          grid%relaxwork(ide-3:ide,jts:jte)=0.0
+          grid%relaxmask(ide-3:ide,jts:jte)=.false.
+       endif
+       if(w_bdy) then
+          grid%relaxwork(ids:ids+2,jts:jte)=0.0
+          grid%relaxmask(ids:ids+2,jts:jte)=.false.
+       endif
+       if(s_bdy) then
+          grid%relaxwork(its:ite,jds:jds+5)=0.0
+          grid%relaxmask(its:ite,jds:jds+5)=.false.
+       endif
+       call wrf_message('Smoothing nest_effect array...')
+       call relax4e(grid,0.5,10,0, &
+            IDS,IDE,JDS,JDE,KDS,KDE, &
+            IMS,IME,JMS,JME,KMS,KME, &
+            IPS,IPE,JPS,JPE,KPS,KPE)
+       do j=jts,jte
+          do i=its,ite
+             grid%nest_effect(i,j)=grid%relaxwork(i,j)
+          enddo
+       enddo
+       call wrf_message('Finished smoothing nest_effect array...')
+    endif make_nest_effect
+  end subroutine sd_nest_effect
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   subroutine sd_grid_sanity(grid)
     use module_CTLBLK
@@ -417,6 +408,7 @@ contains
 #include <dummy_new_args.inc>
 !
 )
+    use module_comm_dm ! many halo subs
     use module_state_description ! various num_whatevers
     use module_mpp, only: mype
     use module_dm, only: ntasks_x, ntasks_y, mytask, ntasks, &
@@ -453,6 +445,7 @@ contains
 #  include <HALO_NMM_INIT_14.inc>
 #  include <HALO_NMM_INIT_15.inc>
     if(all) then
+       ! 15B = MOIST and SCALAR halos
 #  include <HALO_NMM_INIT_15B.inc>
     endif
 #  include <HALO_NMM_INIT_16.inc>
@@ -526,6 +519,7 @@ contains
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   subroutine sd_random(grid,config_flags)
     use module_domain_type, only: domain
+    USE MODULE_RANDOM, only : srand_grid, rand_grid_r4
     type(domain), intent(inout) :: grid
     type(grid_config_rec_type) :: config_flags
     integer(kind=4) :: random_seed
@@ -565,35 +559,42 @@ contains
     type(grid_config_rec_type) :: config_flags
     logical :: nestless,grid_allowed
     integer :: max_dom,nestid,parent_id
-    if(grid%id==config_flags%high_dom) then
-       ! Open HTCF LUN:
-       call HIFREQ_OPEN(grid,config_flags)
-       ! Open per-nest-move ATCF LUN:
-       call HIFREQ_OPEN(grid,config_flags,atcf=.true.)
-    elseif(config_flags%high_dom==-99) then
-       nestless=.true.
-       CALL nl_get_max_dom( 1, max_dom )
-       nestdo: do nestid=2,max_dom
-          call nl_get_grid_allowed(nestid,grid_allowed)
-          if(grid_allowed) then
-             call nl_get_parent_id(nestid,parent_id)
-             if(parent_id==grid%id) then
-                nestless=.false.
-                exit nestdo
-             endif
-          endif
-       enddo nestdo
-       if(nestless) then
+    if(allowed_to_read .and. config_flags%high_freq) then
+       if(grid%id==config_flags%high_dom) then
           ! Open HTCF LUN:
           call HIFREQ_OPEN(grid,config_flags)
           ! Open per-nest-move ATCF LUN:
           call HIFREQ_OPEN(grid,config_flags,atcf=.true.)
+       elseif(config_flags%high_dom==-99) then
+          nestless=.true.
+          CALL nl_get_max_dom( 1, max_dom )
+          nestdo: do nestid=2,max_dom
+             call nl_get_grid_allowed(nestid,grid_allowed)
+             if(grid_allowed) then
+                call nl_get_parent_id(nestid,parent_id)
+                if(parent_id==grid%id) then
+                   nestless=.false.
+                   exit nestdo
+                endif
+             endif
+          end do nestdo
+          if(nestless) then
+             ! Open HTCF LUN:
+             call HIFREQ_OPEN(grid,config_flags)
+             ! Open per-nest-move ATCF LUN:
+             call HIFREQ_OPEN(grid,config_flags,atcf=.true.)
+          endif
        endif
     endif
   end subroutine sd_hifreq
 #endif
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   subroutine sd_hires_diag(grid,config_flags)
+#ifdef HWRF
+    USE MODULE_STATS_FOR_MOVE, only: vorttrak_init
+    USE MODULE_SWATH, only: init_swath
+#endif
+    USE MODULE_TORNADO_GENESIS, only: init_tornado_genesis
     type(domain) :: grid
     type(grid_config_rec_type) :: config_flags
 
@@ -1540,6 +1541,118 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+  subroutine sd_reset_edge_nonhydro(grid,nest)
+    use module_domain_type, only: domain
+    use, intrinsic :: ieee_arithmetic
+    implicit none
+    logical, intent(in) :: nest
+    type(domain), intent(inout) :: grid
+    integer :: i,j,k
+    real, pointer :: ne(:,:)
+    real :: hydropres(ims:ime,jms:jme,kms:kme)
+    real :: hydroz(ims:ime,jms:jme,kms:kme)
+    real :: apelp, rtopp, dz, sfct, a
+
+    hydropres = ieee_value(apelp,ieee_signaling_nan)
+    hydroz = ieee_value(apelp,ieee_signaling_nan)
+    
+    ne=>grid%nest_effect
+
+    DO K=KPS,KPE
+       DO J=JFS,JFE
+          DO I=IFS,IFE
+             grid%dwdt(I,J,K)=1.*(1-ne(i,j)) + grid%dwdt(i,j,k)*ne(i,j)
+          ENDDO
+       ENDDO
+    ENDDO
+
+    IF(GRID%SIGMA==1)THEN
+       DO J=JFS,JFE
+          DO I=IFS,IFE
+             grid%pdsl(I,J)=grid%pd(I,J)*(1-ne(i,j)) + grid%pdsl(i,j)*ne(i,j)
+          ENDDO
+       ENDDO
+    ELSE
+       DO J=JFS,JFE
+          DO I=IFS,IFE
+             grid%pdsl(I,J)=grid%res(I,J)*grid%pd(I,J)*(1-ne(i,j)) + &
+                  grid%pdsl(i,j)*ne(i,j)
+          ENDDO
+       ENDDO
+    ENDIF
+    !
+    !***
+    !
+    !
+!!!!	SHOULD pint,z,w BE REDEFINED IF RESTRT?
+
+    WRITE( message, * )' restrt=',restrt,' nest=',nest
+    CALL wrf_debug( 0, TRIM(message) )
+    WRITE( message, * )' grid%pdtop=',grid%pdtop,' grid%pt=',grid%pt
+    CALL wrf_debug( 0, TRIM(message) )
+    DO K=KPS,KPE
+       DO J=JFS,JFE
+          DO I=IFS,IFE
+             hydropres(i,j,k) = (grid%eta1(K)*grid%pdtop+ &
+                  grid%eta2(K)*grid%pdsl(I,J)+grid%pt)
+             grid%pint(I,J,K)=ne(i,j)*grid%pint(i,j,k) + (1-ne(i,j))* &
+                  hydropres(i,j,k)
+             grid%w(I,J,K)=ne(i,j)*grid%w(i,j,k)
+          ENDDO
+       ENDDO
+    ENDDO
+
+    DO K=KTS,KTE-1
+       DO J=JFS,JFE
+          DO I=IFS,IFE
+             grid%rtop(I,J,K)=grid%rtop(i,j,k)*ne(i,j) + (1-ne(i,j))* &
+                  ((grid%q(I,J,K)*P608-grid%cwm(I,J,K)+1.)*grid%t(I,J,K)*R_D/ &
+                  ((hydropres(I,J,K+1)+hydropres(I,J,K))*0.5))
+          ENDDO
+       ENDDO
+    ENDDO
+
+    DO J=JFS,JFE
+       DO I=IFS,IFE
+          hydroz(I,J,KFS)=grid%FIS(I,J)*GI
+       ENDDO
+    ENDDO
+
+    ! Z now correctly calculated after nest move.  Needed by membrane MSLP.
+    DO K=KFS,KFE
+       DO J=JFS,JFE
+          DO I=IFS,IFE
+             APELP      = (hydropres(I,J,K+1)+hydropres(I,J,K))
+             RTOPP      = TRG*grid%T(I,J,K)*(1.0+grid%Q(I,J,K)*P608)/APELP
+             DZ         = RTOPP*(grid%DETA1(K)*grid%PDTOP+&
+                  grid%DETA2(K)*grid%PD(I,J))
+             hydroz(i,j,k+1) = hydroz(i,j,k) + DZ
+          ENDDO
+       ENDDO
+    ENDDO
+
+    DO K=KFS,KFE
+       DO J=JFS,JFE
+          DO I=IFS,IFE
+             grid%Z(i,j,k)=grid%Z(i,j,k)*ne(i,j) + (1-ne(i,j))*&
+                  ((hydroz(i,j,k)+hydroz(i,j,k+1))*0.5)
+          ENDDO
+       ENDDO
+    ENDDO
+
+    grid%MSLP=-9999.99
+    DO J=JFS,JFE
+       DO I=IFS,IFE
+          SFCT      = grid%T(I,J,1)*(1.+D608*grid%Q(I,J,1)) + &
+               LAPSR*hydroz(I,J,1)
+          A         = LAPSR*grid%FIS(i,j)*gi/SFCT
+          grid%MSLP(I,J) = hydropres(I,J,1)*(1-A)**COEF2
+       ENDDO
+    ENDDO
+  end subroutine sd_reset_edge_nonhydro
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
   subroutine sd_reset_nonhydro(grid,nest)
     use module_domain_type, only: domain
     implicit none
@@ -1548,6 +1661,7 @@ contains
     logical :: do_me
     real :: apelp, rtopp, dz, sfct, a
     integer :: i,j,k
+
     !----------------------------------------------------------------------
     !***  INITIALIZE NONHYDROSTATIC QUANTITIES
     !----------------------------------------------------------------------
@@ -1607,9 +1721,6 @@ contains
                 grid%pint(I,J,K)=grid%eta1(K)*grid%pdtop+grid%eta2(K)*grid%pdsl(I,J)+grid%pt
                 grid%z(I,J,K)=grid%pint(I,J,K)
                 grid%w(I,J,K)=0.
-#ifdef IDEAL_NMM_TC
-                grid%f(I,J)=0.5*GRID%DT*3.15656e-5 ! IDEAL CASE 0.5*DT*f (and not f!)
-#endif
              ENDDO
           ENDDO
        ENDDO
@@ -1675,6 +1786,36 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+  subroutine reset_ideal_nmm(grid)
+    use module_domain_type, only: domain
+    implicit none
+    type(domain), intent(inout) :: grid
+    logical :: do_me
+    integer :: i,j,k
+#ifdef IDEAL_NMM_TC
+#ifdef HWRF
+    !zhang's doing
+    do_me=(.NOT.RESTRT.OR.NEST .OR. .NOT.allowed_to_read)
+    !end of zhang's doing
+#else
+    do_me=(.NOT.RESTRT.OR.NEST)
+#endif
+    if(do_me) then
+       DO K=KPS,KPE
+          DO J=JFS,JFE
+             DO I=IFS,IFE
+                ! IDEAL CASE 0.5*DT*f (and not f!)
+                grid%f(I,J)=0.5*GRID%DT*3.15656e-5
+             ENDDO
+          ENDDO
+       ENDDO
+    endif
+#endif
+  end subroutine reset_ideal_nmm
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+#ifndef NO_RESTRICT_ACCEL
   subroutine sd_restrict_accel(grid)
     use module_domain_type, only: domain
     use module_MPP
@@ -1754,9 +1895,8 @@ contains
        ENDDO
        !
     ENDIF
-
-
   end subroutine sd_restrict_accel
+#endif
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -1768,6 +1908,7 @@ contains
     use module_physics_init
     use module_state_description ! various num_whatevers
     use module_domain_type, only: domain
+    use module_domain, only: domain_setgmtetc
     use module_symbols_util, only: WRFU_Time
     use module_MPP
     implicit none
@@ -1991,6 +2132,15 @@ contains
        ENDIF
     END IF
 
+    ! Set GMT, JULDAY, and JULYR outside of phy_init because it is no
+    ! longer called inside phy_init due to moving nest changes.  (When
+    ! nests move phy_init may not be called on a process if, for
+    ! example, it is a moving nest and if this part of the domain is
+    ! not being initialized (not the leading edge).)  Calling
+    ! domain_setgmtetc() here will avoid this problem when NMM moves
+    ! to moving nests.
+    CALL domain_setgmtetc( GRID, START_OF_SIMULATION )
+
     CALL PHY_INIT(GRID%ID,CONFIG_FLAGS,GRID%DT,LRESTART,SFULL,SMID    &
          &             ,grid%pt,TSFC,GRID%RADT,GRID%BLDT,GRID%CUDT,GRID%GSMDT    &
          &             ,grid%DUCUDT, grid%DVCUDT                            &
@@ -2069,22 +2219,60 @@ contains
          &                MAXPATCH=1,ccn_conc=config_flags%ccn_conc & ! CLM
          &                )
 
-
-    !
-    !
-    !mp replace F*_PHY with values defined in module_initialize_real.F?
-#ifdef HWRF
-    IF (.NOT. RESTRT .and. ALLOWED_TO_READ) THEN   !zhang
-       grid%moist = 0.0
-       if(size(grid%f_ice)>1) grid%f_ice = grid%f_ice_phy
-       if(size(grid%f_rimef)>1) grid%f_rimef = grid%f_rimef_phy
-       if(size(grid%f_rain)>1) grid%f_rain = grid%f_rain_phy
-    ENDIF                  !zhang
-#endif
-
-    CALL domain_setgmtetc( GRID, START_OF_SIMULATION )
-
   end subroutine sd_physics_init
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+  subroutine sd_compute_ct_ct2(grid)
+    use module_domain_type, only: domain
+    implicit none
+    type(domain), intent(inout) :: grid
+    !
+    ! computes ct and ct2 for topo_wind=1 or topo_wind=2
+    ! NOTE: not yet implemented for NMM: =1.0 will have no effect
+    !
+    grid%ctopo=1.
+    grid%ctopo2=1.
+    !
+  end subroutine sd_compute_ct_ct2
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  subroutine sd_init_gwd(grid)
+    use module_MPP
+    use module_domain_type, only: domain
+    USE MODULE_GWD, only: GWD_init
+    implicit none
+    type(domain), intent(inout) :: grid
+    integer :: i,j
+    real :: dtphs,cen_lat,cen_lon
+    logical :: do_me
+    !-----------------------------------------------------------------------
+    !---- Initialization for gravity wave drag (GWD) & mountain blocking (MB)
+    !
+#if (HWRF == 1)
+    do_me=(grid%gwd_opt .eq. 2 .AND. grid%id .eq. 1 .AND. allowed_to_read) 
+#else
+    do_me=(grid%gwd_opt .eq. 2 )
+#endif
+    if(do_me) then
+       CALL nl_get_cen_lat(GRID%ID, CEN_LAT)    !-- CEN_LAT in deg
+       CALL nl_get_cen_lon(GRID%ID, CEN_LON)    !-- CEN_LON in deg
+       DTPHS=grid%dt*grid%nphs
+       CALL GWD_init(DTPHS,GRID%DX,GRID%DY,CEN_LAT,CEN_LON,RESTRT        &
+            &              ,grid%glat,grid%glon,grid%crot,grid%srot,grid%hangl                          &
+            &              ,IDS,IDE,JDS,JDE,KDS,KDE                            &
+            &              ,IMS,IME,JMS,JME,KMS,KME                            &
+            &              ,ITS,ITE,JTS,JTE,KTS,KTE )
+    ENDIF
+    IF(.NOT.RESTRT)THEN
+       DO J=MYJS,MYJE
+          DO I=MYIS,MYIE
+             grid%ugwdsfc(I,J)=0.
+             grid%vgwdsfc(I,J)=0.
+          ENDDO
+       ENDDO
+    ENDIF
+  end subroutine sd_init_gwd
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -2151,6 +2339,20 @@ contains
     type(domain), intent(inout) :: grid
     integer :: i,j,k,i_m
     LOGICAL :: ETAMP_Regional, ICE1_indx, ICE2_indx
+
+    ! Added by Greg Thompson, NCAR-RAL, for initializing water vapor
+    ! mixing ratio (from NMM's specific humidity var) into moist
+    ! array.
+    !!mp
+    CALL wrf_message('Initializng moist(:,:,:, Qv) from q')
+    DO K=KPS,KPE
+       DO J=JFS,JFE
+          DO I=IFS,IFE
+             moist(I,J,K,P_QV) = grid%q(I,J,K) / (1.-grid%q(I,J,K))                 
+          enddo
+       enddo
+    enddo
+    
     ! Also sum cloud water, ice, rain, snow, graupel into Ferrier
     ! cwm array (if any hydrometeors found and non-zero from
     ! initialization package).  Then, determine fractions ice and
@@ -2315,57 +2517,7 @@ contains
        ENDDO
     endif
   end subroutine sd_reset_precip
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  subroutine sd_compute_ct_ct2(grid)
-    use module_domain_type, only: domain
-    implicit none
-    type(domain), intent(inout) :: grid
-    !
-    ! computes ct and ct2 for topo_wind=1 or topo_wind=2
-    ! NOTE: not yet implemented for NMM: =1.0 will have no effect
-    !
-    grid%ctopo=1.
-    grid%ctopo2=1.
-    !
-  end subroutine sd_compute_ct_ct2
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  subroutine sd_init_gwd(grid)
-    use module_MPP
-    use module_domain_type, only: domain
-    implicit none
-    type(domain), intent(inout) :: grid
-    integer :: i,j
-    real :: dtphs,cen_lat,cen_lon
-    logical :: do_me
-    !-----------------------------------------------------------------------
-    !---- Initialization for gravity wave drag (GWD) & mountain blocking (MB)
-    !
-#if (HWRF == 1)
-    do_me=(grid%gwd_opt .eq. 2 .AND. grid%id .eq. 1 .AND. allowed_to_read) 
-#else
-    do_me=(grid%gwd_opt .eq. 2 )
-#endif
-    if(do_me) then
-       CALL nl_get_cen_lat(GRID%ID, CEN_LAT)    !-- CEN_LAT in deg
-       CALL nl_get_cen_lon(GRID%ID, CEN_LON)    !-- CEN_LON in deg
-       DTPHS=grid%dt*grid%nphs
-       CALL GWD_init(DTPHS,GRID%DX,GRID%DY,CEN_LAT,CEN_LON,RESTRT        &
-            &              ,grid%glat,grid%glon,grid%crot,grid%srot,grid%hangl                          &
-            &              ,IDS,IDE,JDS,JDE,KDS,KDE                            &
-            &              ,IMS,IME,JMS,JME,KMS,KME                            &
-            &              ,ITS,ITE,JTS,JTE,KTS,KTE )
-    ENDIF
-    IF(.NOT.RESTRT)THEN
-       DO J=MYJS,MYJE
-          DO I=MYIS,MYIE
-             grid%ugwdsfc(I,J)=0.
-             grid%vgwdsfc(I,J)=0.
-          ENDDO
-       ENDDO
-    ENDIF
-  end subroutine sd_init_gwd
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   subroutine sd_set_time(grid)
@@ -2402,6 +2554,73 @@ contains
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+  subroutine sd_dealloc()
+#define dealloc_if(X) if(allocated(X)) deallocate(X)
+    dealloc_if(ITEMP)
+    dealloc_if(LOWLYR)
+    dealloc_if(SFULL)
+    dealloc_if(SMID)
+    dealloc_if(DZS)
+    dealloc_if(ZS)
+    dealloc_if(RQCBLTEN)
+    dealloc_if(RQIBLTEN)
+    dealloc_if(RQVBLTEN)
+    dealloc_if(RTHBLTEN)
+    dealloc_if(RUBLTEN)
+    dealloc_if(RVBLTEN)
+    dealloc_if(RQCCUTEN)
+    dealloc_if(RQICUTEN)
+    dealloc_if(RQRCUTEN)
+    dealloc_if(RQSCUTEN)
+    dealloc_if(RQVCUTEN)
+    dealloc_if(RTHCUTEN)
+    dealloc_if(RUSHTEN)
+    dealloc_if(RVSHTEN)
+    dealloc_if(RQCSHTEN)
+    dealloc_if(RQISHTEN)
+    dealloc_if(RQRSHTEN)
+    dealloc_if(RQSSHTEN)
+    dealloc_if(RQVSHTEN)
+    dealloc_if(RTHSHTEN)
+    dealloc_if(RQGSHTEN)
+    dealloc_if(RTHRATEN)
+    dealloc_if(RTHRATENLW)
+    dealloc_if(RTHRATENSW)
+    dealloc_if(EMISS)
+    dealloc_if(EMTEMP)
+    dealloc_if(GLW)
+    dealloc_if(HFX)
+    dealloc_if(NCA)
+    dealloc_if(QFX)
+    dealloc_if(RAINBL)
+    dealloc_if(RAINC)
+    dealloc_if(RAINNC)
+    dealloc_if(RAINNCV)
+    dealloc_if(SNOWNC)
+    dealloc_if(SNOWNCV)
+    dealloc_if(GRAUPELNC)
+    dealloc_if(GRAUPELNCV)
+    dealloc_if(SNOWC)
+    dealloc_if(THC)
+    dealloc_if(TMN)
+    dealloc_if(TSFC)
+    dealloc_if(Z0_DUM)
+    dealloc_if(ALBEDO_DUM)
+    dealloc_if(ZINT)
+    dealloc_if(RRI)
+    dealloc_if(CONVFAC)
+    dealloc_if(ZMID)
+    dealloc_if(T_TRANS)
+    dealloc_if(PINT_TRANS)
+    dealloc_if(CLDFRA_TRANS)
+    dealloc_if(SCALAR_TRANS)
+    dealloc_if(CLDFRA_OLD)
+    dealloc_if(z_at_q)
+#undef dealloc_if
+  end subroutine sd_dealloc
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
   subroutine start_domain_main( &
        grid, allowed_to_read_ &
 !
@@ -2412,6 +2631,7 @@ contains
     use module_mpp
     use module_configure, only: model_to_grid_config_rec, grid_config_rec_type
     use module_domain_type, only: domain, program_name
+    use module_timing, only: start_timing, end_timing
 #ifdef HWRF
     USE module_tornado_genesis, only: init_tornado_genesis
     use module_stats_for_move, only: vorttrak_init
@@ -2438,9 +2658,27 @@ contains
     allowed_to_read=allowed_to_read_
     is_real_nmm=program_name(1:8) == 'REAL_NMM'
 
+    call wrf_debug(1,'In start_domain_main with:')
+    if(restrt)               call wrf_debug(1,'  restrt=.true.')
+    if(.not.restrt)          call wrf_debug(1,'  restrt=.false.')
+    if(anal)                 call wrf_debug(1,'  anal=.true.')
+    if(.not.anal)            call wrf_debug(1,'  anal=.false.')
+    if(is_real_nmm)          call wrf_debug(1,'  is_real_nmm=.true.')
+    if(.not.is_real_nmm)     call wrf_debug(1,'  is_real_nmm=.false.')
+    if(allowed_to_read)      call wrf_debug(1,'  allowed_to_read=.true.')
+    if(.not.allowed_to_read) call wrf_debug(1,'  allowed_to_read=.false.')
+    if(config_flags%retain_nonhydro) then
+       call wrf_debug(1,'  retain_nonhydro=.true.')
+    else
+       call wrf_debug(1,'  retain_nonhydro=.false.')
+    endif
+
     call sd_clear_halos(grid,config_flags)
+#ifdef HWRF
     call sd_coupling(grid)
+#endif
     call sd_grid_bounds(grid)
+    call sd_nest_effect(grid)
     call sd_grid_sanity(grid)
     call sd_set_mpp_bounds(grid)
     call sd_halos(grid,config_flags,.false. &
@@ -2498,11 +2736,23 @@ contains
 #endif
     if(doit) call sd_init_old(grid)
 
-    call sd_reset_nonhydro(grid,nest)
+    if(.not.allowed_to_read .and. config_flags%retain_nonhydro) then
+       call wrf_debug(1,'Resetting non-hydrostatic state at nest edges.')
+       call sd_reset_edge_nonhydro(grid,nest)
+    else
+       call wrf_debug(1,'Resetting non-hydrostatic state.')
+       call sd_reset_nonhydro(grid,nest)
+    endif
+
+#ifdef IDEAL_NMM_TC
+    call reset_ideal_nmm(grid)
+#endif
 
 #ifndef NO_RESTRICT_ACCEL
     call sd_restrict_accel(grid)
 #endif
+
+    call sd_set_time(grid)
 
     !------------------------------------------------
     ! allocate massive amounts of data in this region
@@ -2510,12 +2760,14 @@ contains
 !
 #include <actual_new_args.inc>
 !
-)
+         )
+    call sd_compute_ct_ct2(grid)
+    call sd_init_gwd(grid)
     call sd_copy_or_reset_phys(grid&
 !
 #include <actual_new_args.inc>
 !
-)
+         )
     IF (.NOT. RESTRT .and. ALLOWED_TO_READ) THEN
        call sd_calc_micro(grid,MOIST)
     ENDIF
@@ -2531,9 +2783,6 @@ contains
 
     call sd_replace_data(grid)
     call sd_reset_precip(grid)
-    call sd_compte_ct_ct2(grid)
-    call sd_init_gwd(grid)
-    call sd_set_time(grid)
 
     call sd_dealloc()
     ! have deallocated huge data arrays
