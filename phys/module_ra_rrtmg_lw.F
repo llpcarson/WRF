@@ -11398,6 +11398,8 @@ use mcica_subcol_gen_lw, only: mcica_subcol_lw
     ! For buffer layer adjustment.  Steven Cavallo, Dec 2010.
     integer , save    :: nlayers    
     real, PARAMETER :: deltap = 4.  ! Pressure interval for buffer layer in mb
+
+    real:: gridkm
     
 CONTAINS
 
@@ -11726,7 +11728,8 @@ CONTAINS
     integer :: pcols, pver
 
 !
-    INTEGER :: i,j,K
+    INTEGER :: i,j,K, idx_rei
+    REAL :: corr
     LOGICAL :: predicate
 
 ! Added for top of model adjustment.  Steven Cavallo NCAR/MMM December 2010
@@ -11987,10 +11990,17 @@ CONTAINS
                inflglw = 3
                DO K=kts,kte
                   recloud1D(ncol,K) = MAX(2.5, re_cloud(I,K,J)*1.E6)
+                  if (recloud1D(ncol,K).LE.2.5.AND.cldfra3d(i,k,j).gt.0. &
+     &                            .AND. (XLAND(I,J)-1.5).GT.0.) then     !--- Ocean
+                     recloud1D(ncol,K) = 10.5
+                  elseif(recloud1D(ncol,K).LE.2.5.AND.cldfra3d(i,k,j).gt.0. &
+     &                            .AND. (XLAND(I,J)-1.5).LT.0.) then     !--- Land
+                     recloud1D(ncol,K) = 7.5
+                  endif
                ENDDO
             ELSE
                DO K=kts,kte
-                  recloud1D(ncol,K) = 5.0
+                  recloud1D(ncol,K) = 2.5
                ENDDO
             ENDIF
 
@@ -12003,6 +12013,14 @@ CONTAINS
                iceflglw = 4
                DO K=kts,kte
                   reice1D(ncol,K) = MAX(10., re_ice(I,K,J)*1.E6)
+                  if (reice1D(ncol,K).LE.10..AND.cldfra3d(i,k,j).gt.0.) then
+                     idx_rei = int(t3d(i,k,j)-179.)
+                     idx_rei = min(max(idx_rei,1),75)
+                     corr = t3d(i,k,j) - int(t3d(i,k,j))
+                     reice1D(ncol,K) = retab(idx_rei)*(1.-corr) +       &
+     &                                 retab(idx_rei+1)*corr
+                     reice1D(ncol,K) = MAX(reice1D(ncol,K), 10.0)
+                  endif
                ENDDO
             ELSE
                DO K=kts,kte
@@ -12018,11 +12036,11 @@ CONTAINS
                inflglw  = 5
                iceflglw = 5
                DO K=kts,kte
-                  resnow1D(ncol,K) = MAX(10., re_snow(I,K,J)*1.E6)
+                  resnow1D(ncol,K) = MAX(25., re_snow(I,K,J)*1.E6)
                ENDDO
             ELSE
                DO K=kts,kte
-                  resnow1D(ncol,K) = 10.0
+                  resnow1D(ncol,K) = 25.0
                ENDDO
             ENDIF
          ENDIF
