@@ -227,6 +227,8 @@
       LOGICAL :: WARM_RAIN
       LOGICAL :: IS_CAMMGMP_USED=.FALSE.
 
+      REAL :: DXKM
+
 !
 !-----------------------------------------------------------------------
 !***********************************************************************
@@ -247,6 +249,8 @@
 !-----------------------------------------------------------------------
 !
       CAPA=R_D/CP
+
+      DXKM = config_flags%dx * 111.11
 !
 !-----------------------------------------------------------------------
 !
@@ -388,6 +392,8 @@
      &                 ,ITIMESTEP=NTSD,DT=DT                            &
      &                 ,ICLOUD_CU=config_flags%ICLOUD_CU                &
      &                 ,QC_CU=GRID%QC_CU,QI_CU=GRID%QI_CU               &
+     &                 ,DX=grid%dx_nmm(1,1),DY=grid%dy_nmm              &
+     &                 ,DXKM=dxkm                                       &
 ! WRF-Solar variables
                        ,swint_opt=config_flags%swint_opt                &   
      &       ,SWDDIR=grid%swddir,SWDDNI=grid%swddni,SWDDIF=grid%swddif     & ! jararias
