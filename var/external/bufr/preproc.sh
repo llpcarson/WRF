@@ -5,8 +5,6 @@
 
 cat > endiantest.c << ENDIANTEST
 
-#include <stdio.h>
-
 #define Order(x)\
 	fill((char *)&x, sizeof(x)); \
 	for (i=1; i<=sizeof(x); i++) { \
@@ -64,9 +62,9 @@ rm -f endiantest.c endiantest
 
     
 #-------------------------------------------------------------------------------
-#     Preprocess any Fortran *.F90 files into corresponding *.f files.
+#     Preprocess any Fortran *.F files into corresponding *.f files.
 
-bn=`basename $1 .for`
+bn=`basename $1 .F`
 bnf=${bn}.f
 $CPP $CPPFLAGS -D$byte_order $1 > $bnf
 

@@ -11763,7 +11763,7 @@ CONTAINS
 		  266.13,263.96,261.54,258.93,256.15,253.23,      &
 		  249.89,246.67,243.48,240.25,236.66,233.86/	
 !------------------------------------------------------------------
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
       IF ( aer_ra_feedback == 1) then
       IF ( .NOT. &
       ( PRESENT(tauaerlw1) .AND. &
@@ -12471,7 +12471,7 @@ CONTAINS
       end do
       end do
 
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
    IF ( AER_RA_FEEDBACK == 1) then
 !     do nb = 1, nbndlw 
       do k = kts,kte      !wig

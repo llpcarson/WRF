@@ -1,5 +1,5 @@
 #define WRF_PORT
-#if ( WRF_CHEM == 1 )
+#if defined ( WRF_CHEM )
 #       include "../chem/MODAL_AERO_CPP_DEFINES.h"
 #else
 #       define MODAL_AERO

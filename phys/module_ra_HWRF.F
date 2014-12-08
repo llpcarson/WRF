@@ -122,7 +122,6 @@ CONTAINS
      &                ,JULYR,JULDAY,GFDL_LW,GFDL_SW                     &
      &                ,CFRACL,CFRACM,CFRACH                             &
      &                ,ACFRST,NCFRST,ACFRCV,NCFRCV                      &
-     &                ,gridkm                                           &
      &                ,IDS,IDE,JDS,JDE,KDS,KDE                          &
      &                ,IMS,IME,JMS,JME,KMS,KME                          &
      &                ,ITS,ITE,JTS,JTE,KTS,KTE)
@@ -138,7 +137,7 @@ CONTAINS
       INTEGER,INTENT(IN) :: julyr,julday   
       INTEGER,INTENT(INOUT),DIMENSION(ims:ime,jms:jme) :: NCFRST        & !Added
                                                          ,NCFRCV          !Added
-      REAL,INTENT(IN) :: DT,GMT,G, gridkm
+      REAL,INTENT(IN) :: DT,GMT,G
 
       REAL,INTENT(INOUT),DIMENSION(ims:ime, kms:kme, jms:jme)::         &
                                          THRATEN,THRATENLW,THRATENSW
@@ -256,7 +255,6 @@ CONTAINS
      &            NSTEPRA,NSTEPRA,NPHS,ITIMESTEP,                       &
      &            TENDS,TENDL,RSWTOA,RLWTOA,CZMEAN,                     &
      &            CFRACL,CFRACM,CFRACH,                                 &
-     &            gridkm,                                               &
      &            IDS,IDE,JDS,JDE,KDS,KDE,                              &
      &            IMS,IME,JMS,JME,KMS,KME,                              &
      &            ITS,ITE,JTS,JTE,KTS,KTE                              )
@@ -332,7 +330,6 @@ CONTAINS
 !#$  &                 TENDS,TENDL,                                     &
      &                 TENDS,TENDL,RSWTOA,RLWTOA,CZMEAN,                &
      &                 CFRACL,CFRACM,CFRACH,                            & !Added
-     &                 gridkm,                                          &
      &                 ids,ide, jds,jde, kds,kde,                       &
      &                 ims,ime, jms,jme, kms,kme,                       &
      &                 its,ite, jts,jte, kts,kte                       )
@@ -455,7 +452,6 @@ CONTAINS
       INTEGER,PARAMETER :: K15=SELECTED_REAL_KIND(15)
       REAL (KIND=K15) :: DDX,EEX,PROD
 !     REAL, INTENT(IN) :: SKO3R,AB15WD,SKC1R,SKO2D
-      REAL, INTENT(IN) :: gridkm
 !-----------------------------------------------------------------------
       LOGICAL :: SHORT,LONG
       LOGICAL :: BITX,BITY,BITZ,BITW,BIT1,BIT2,BITC,BITS,BITCP1,BITSP1
@@ -549,7 +545,6 @@ CONTAINS
       INTEGER :: LCNVB,LCNVT
       INTEGER :: NLVL,MALVL,LLTOP,LLBOT,KBT2,KTH1,KBT1,KTH2,KTOP1,KFLIP
       INTEGER :: NBAND,NCLD,LBASE,NKTP,NBTM,KS,MYJS1,MYJS2,MYJE2,MYJE1
-      REAL    :: RH_00O, RH_00L
 
 !     REAL,DIMENSION(5040):: T1,T2,T4,EM1V,EM1VW,EM3V
 
@@ -895,44 +890,11 @@ CONTAINS
             LCNVB=MIN(LM,LCNVB)
 !
             DO LL=LCNVT,LCNVB
-!-GT          CCMID(I,LL)=CLFR
-!..This is a test to get rid of convective cloud fractions in HWRF radiation (gthompsn)
-              CCMID(I,LL)=0.0
+              CCMID(I,LL)=CLFR
             ENDDO
           ENDIF    !--- IF (HBOT(I,J)-HTOP(I,J) .GT. 1.0) ...
         ENDDO      !--- End DO I loop
       ENDIF        !--- End IF (CNCLD) ...
-
-
-!..Cloud fraction following Kvamsto (1991) as described in Mocko and Cotton (1995).
-!..Cloud fraction following Sundqvist et al (1989) as described in Mocko and Cotton (1995).
-!.. modified for scale-aware RH-threshold. (gthompsn)
-!     RH_00L = 0.65 + SQRT(1./(8.6+gridkm))
-!     RH_00O = 0.75 + SQRT(1./(16.5+gridkm))
-
-!     DO I=MYIS,MYIE
-!       LML=LMH(I,J)
-!       LVLIJ=LVL(I,J)
-!       DO L=1,LML
-!         LL=L+LVLIJ
-!         WV=QMID(I,LL)/(1.-QMID(I,LL))
-!         ESAT = 1000.*FPVS(TMID(I,LL))         !--- Saturation vapor pressure (Pa)
-!         QSAT = EPS*ESAT/(PMID(I,LL)-ESAT)     !--- Saturation mixing ratio
-!         RHUM = MIN(0.999,WV/QSAT)             !--- Relative humidity
-
-!         IF ((XLAND(I,J)-1.5).GT.0.) THEN                !--- Ocean
-!!            CLFR = (1.0-0.0)/(1.0-0.85) * (RHUM-0.85)
-!            CLFR = 1.0 - SQRT( (1.0-RHUM)/(1.0-RH_00O))
-!         ELSE                                            !--- Land
-!!            CLFR = (1.0-0.0)/(1.0-0.75) * (RHUM-0.75)
-!            CLFR = 1.0 - SQRT( (1.0-RHUM)/(1.0-RH_00L))
-!         ENDIF
-!         CCMID(I,LL)=CLFR
-!       ENDDO            !--- End DO L ...
-!     ENDDO      !--- End DO I loop
-
-
-
 !*********************************************************************
 !*****************END OF CONVECTIVE CLOUD SECTION*****************
 !*********************************************************************

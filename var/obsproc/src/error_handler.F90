@@ -17,10 +17,8 @@ SUBROUTINE error_handler (calling_routine,message1,message2,fatal)
    WRITE (0,'(/,A,1X,A)') TRIM (message1),TRIM (message2)
 
    IF (fatal) THEN
-      WRITE (0,'(/,A,A,/)') "FATAL ERROR: STOP in ",TRIM (calling_routine)
-      STOP
-   ELSE
-      WRITE (0,'(/,A,A,/)') "WARNING: ERROR in ",TRIM (calling_routine)
+       WRITE (0,'(/,A,A,/)') "??? Should be STOPPed in ",TRIM (calling_routine)
+!       STOP
    ENDIF
 
 END SUBROUTINE error_handler

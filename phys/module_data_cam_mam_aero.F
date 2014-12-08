@@ -3,7 +3,7 @@
 ! Updated to CESM1.0.3 (CAM5.1.01) by Balwinder.Singh@pnnl.gov
 !--------------------------------------------------------------
 #define WRF_PORT
-#if ( WRF_CHEM == 1 )
+#if defined ( WRF_CHEM )
 #       include "../chem/MODAL_AERO_CPP_DEFINES.h"
 #else
 #       define MODAL_AERO

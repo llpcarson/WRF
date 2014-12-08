@@ -97,8 +97,7 @@ subroutine plumerise_driver (id,ktau,dtstep,                           &
       if( scale_fire_emiss ) then
         if( config_flags%chem_opt /= MOZCART_KPP .and. &
             config_flags%chem_opt /= MOZART_KPP .and. &
-            config_flags%chem_opt /= MOZART_MOSAIC_4BIN_KPP .and. &
-            config_flags%chem_opt /= MOZART_MOSAIC_4BIN_AQ_KPP ) then
+            config_flags%chem_opt /= MOZART_MOSAIC_4BIN_VBS0_KPP ) then
           call wrf_error_fatal("Fire emission scaling only supported for MOZART_KPP, MOZCART_KPP chem options")
         endif
       endif
@@ -280,9 +279,7 @@ is_mozcart : &
                    config_flags%biomass_burn_opt == BIOMASSB_MOZC) .or. &
                   (config_flags%chem_opt == MOZART_KPP .and. &
                    config_flags%biomass_burn_opt == BIOMASSB_MOZ) .or. &
-                  (config_flags%chem_opt == MOZART_MOSAIC_4BIN_KPP .and. &
-                   config_flags%biomass_burn_opt == BIOMASSB_MOZC) .or. &
-                   (config_flags%chem_opt == MOZART_MOSAIC_4BIN_AQ_KPP .and. &
+                  (config_flags%chem_opt == MOZART_MOSAIC_4BIN_VBS0_KPP .and. &
                    config_flags%biomass_burn_opt == BIOMASSB_MOZC) ) then
 !-------------------------------------------------------------------
 ! we input total emissions instead of smoldering emissions:
@@ -330,8 +327,7 @@ is_mozcart : &
                   ebu(i,k,j,p_ebu_mvk)  = ebu(i,k,j,p_ebu_mvk)*ratio
                 end do
                 if( config_flags%chem_opt == MOZCART_KPP .or. &
-                    config_flags%chem_opt == MOZART_MOSAIC_4BIN_KPP .or. &
-                    config_flags%chem_opt == MOZART_MOSAIC_4BIN_AQ_KPP ) then
+                    config_flags%chem_opt == MOZART_MOSAIC_4BIN_VBS0_KPP ) then
                   do k = kts,kte
                     ebu(i,k,j,p_ebu_pm10) = ebu(i,k,j,p_ebu_pm10)*ratio
                     ebu(i,k,j,p_ebu_pm25) = ebu(i,k,j,p_ebu_pm25)*ratio

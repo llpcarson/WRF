@@ -26,7 +26,7 @@ PROGRAM ndown_em
    USE module_bc
    USE module_big_step_utilities_em
    USE module_get_file_names
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! for chemistry
    USE module_input_chem_data
@@ -368,15 +368,7 @@ real :: cf1_c,cf2_c,cf3_c,cfn_c,cfn1_c
             CALL close_dataset      ( fid , config_flags , "DATASET=INPUT" )
             file_counter = file_counter + 1
             IF ( file_counter .GT. number_of_eligible_files ) THEN
-               WRITE( wrf_err_message , FMT='(A)' ) 'program ndown: opening too many files'
-               CALL wrf_message ( TRIM(wrf_err_message) )
-               WRITE( wrf_err_message , FMT='(A)' ) 'Usually, this is caused by trying to run ndown past the last time available d01 model output'
-               CALL wrf_message ( TRIM(wrf_err_message) )
-               WRITE( wrf_err_message , FMT='(A)' ) 'The CG model output is used to supply lateral boundary conditions'
-               CALL wrf_message ( TRIM(wrf_err_message) )
-               WRITE( wrf_err_message , FMT='(A)' ) 'The ndown program uses the start and end times, the WRF model for d01 likely used the run times option.'
-               CALL wrf_message ( TRIM(wrf_err_message) )
-               WRITE( wrf_err_message , FMT='(A)' ) 'Check the namelist.input time_control section for inconsistencies.'
+               WRITE( wrf_err_message , FMT='(A,A,A,I8)' ) 'program ndown: opening too many files'
                CALL WRF_ERROR_FATAL ( wrf_err_message )
             END IF
             CALL wrf_debug      ( 100 , 'ndown_em main: calling open_r_dataset for ' // TRIM(eligible_file_name(file_counter)) )
@@ -473,7 +465,7 @@ real :: cf1_c,cf2_c,cf3_c,cfn_c,cfn1_c
          CALL nl_set_bdyfrq ( nested_grid%id , new_bdy_frq )
          config_flags%bdyfrq = new_bdy_frq
 
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
 nested_grid%chem_opt    = parent_grid%chem_opt
 nested_grid%chem_in_opt = parent_grid%chem_in_opt
 #endif
@@ -705,7 +697,7 @@ nested_grid%chem_in_opt = parent_grid%chem_in_opt
 !        print *,'current_date = ',current_date
          CALL domain_clock_set( nested_grid, &
                                 current_timestr=current_date(1:19) )
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
 !
 !         Put in chemistry data
 !
@@ -872,7 +864,7 @@ nested_grid%chem_in_opt = parent_grid%chem_in_opt
                                                                            ids , ide , jds , jde , 1 , 1 , &
                                                                            ims , ime , jms , jme , 1 , 1 , &
                                                                            ips , ipe , jps , jpe , 1 , 1 )
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
          do nvchem=1,num_chem
 !        if(nvchem.eq.p_o3)then
 !          write(0,*)'fill ch_b',cbdy3dtemp1(5,1,5),nvchem
@@ -998,7 +990,7 @@ nested_grid%chem_in_opt = parent_grid%chem_in_opt
                                                                   ids , ide , jds , jde , 1 , 1 , &
                                                                   ims , ime , jms , jme , 1 , 1 , &
                                                                   ips , ipe , jps , jpe , 1 , 1 )
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
          do nvchem=1,num_chem
          cbdy3dtemp1(ips:ipe,kps:kpe,jps:jpe)=cbdy3dtemp0(ips:ipe,kps:kpe,jps:jpe,nvchem) 
          cbdy3dtemp2(ips:ipe,kps:kpe,jps:jpe)=nested_grid%chem(ips:ipe,kps:kpe,jps:jpe,nvchem)
@@ -1145,7 +1137,7 @@ print *,'bdy time = ',time_loop-1,'  bdy date = ',current_date,' ',start_date
          END DO 
 
 
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
          do nvchem=1,num_chem
          cbdy3dtemp1(ips:ipe,kps:kpe,jps:jpe)=cbdy3dtemp0(ips:ipe,kps:kpe,jps:jpe,nvchem) 
 !        if(nvchem.eq.p_o3)then
@@ -1200,7 +1192,7 @@ print *,'bdy time = ',time_loop-1,'  bdy date = ',current_date,' ',start_date
          !  During all of the loops after the first loop, we first compute the boundary
          !  tendencies with the current data values and the previously save information
          !  stored in the *bdy3dtemp1 arrays.
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
          do nvchem=1,num_chem
          cbdy3dtemp1(ips:ipe,kps:kpe,jps:jpe)=cbdy3dtemp0(ips:ipe,kps:kpe,jps:jpe,nvchem) 
          cbdy3dtemp2(ips:ipe,kps:kpe,jps:jpe)=nested_grid%chem(ips:ipe,kps:kpe,jps:jpe,nvchem)

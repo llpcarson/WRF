@@ -4879,7 +4879,8 @@ subroutine LakeDebug( str )
   IMPLICIT NONE
   CHARACTER*(*), str
  
-  CALL wrf_debug( 0 , TRIM(str) )
+  print*, TRIM(str)
+  call flush(6)
  
 end subroutine LakeDebug
 

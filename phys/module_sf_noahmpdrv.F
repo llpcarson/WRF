@@ -8,7 +8,7 @@ MODULE module_sf_noahmpdrv
   USE module_sf_noahmp_glacier
   USE MODULE_RA_GFDLETA, ONLY: CAL_MON_DAY
   USE module_sf_noahmp_groundwater, ONLY : LATERALFLOW
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
   USE module_data_gocart_dust
 #endif
 !-------------------------------
@@ -1001,17 +1001,14 @@ end if
           CALL wrf_error_fatal( "module_sf_noahlsm.F: lsminit: out of range value "// &
                "of ISLTYP. Is this field in the input?" )
        ENDIF
-! GAC-->
-! 20130219 - No longer need this - see module_data_gocart_dust
-!#if ( WRF_CHEM == 1 )
-!       !
-!       ! need this parameter for dust parameterization in wrf/chem
-!       !
-!       do I=1,NSLTYPE
-!          porosity(i)=maxsmc(i)
-!       enddo
-!#endif
-! <--GAC
+#ifdef WRF_CHEM
+       !
+       ! need this parameter for dust parameterization in wrf/chem
+       !
+       do I=1,NSLTYPE
+          porosity(i)=maxsmc(i)
+       enddo
+#endif
 
 ! initialize soil liquid water content SH2O
 

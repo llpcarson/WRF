@@ -11,7 +11,7 @@ PROGRAM ideal_nmm
    USE module_configure
    USE module_timing
    USE module_check_a_mundo
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
    USE module_input_chem_data
    USE module_input_chem_bioemiss
 #endif
@@ -188,7 +188,7 @@ SUBROUTINE med_sidata_input ( grid , config_flags )
    USE module_bc_time_utilities
    USE module_initialize_ideal
    USE module_optional_input
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
    USE module_input_chem_data
    USE module_input_chem_bioemiss
 #endif
@@ -543,7 +543,7 @@ SUBROUTINE med_sidata_input ( grid , config_flags )
         CALL start_domain ( grid , .TRUE.)
       END IF
 
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
       IF ( loop == 1 ) THEN
 !        IF ( ( grid%chem_opt .EQ. RADM2     ) .OR. &
 !             ( grid%chem_opt .EQ. RADM2SORG ) .OR. &

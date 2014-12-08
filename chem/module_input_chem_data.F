@@ -367,11 +367,8 @@ SUBROUTINE setup_gasprofile_maps(chem_opt, numgas)
   case (MOZCART_KPP)
      call wrf_debug("setup_profile_maps: nothing done for mozcart_kpp")
 
-  case (MOZART_MOSAIC_4BIN_KPP)
-     call wrf_debug("setup_profile_maps: nothing done for mozart_mosaic_4bin_kpp")
-
-  case (MOZART_MOSAIC_4BIN_AQ_KPP)
-     call wrf_debug("setup_profile_maps: nothing done for mozart_mosaic_4bin_aq_kpp")
+  case (MOZART_MOSAIC_4BIN_VBS0_KPP)
+     call wrf_debug("setup_profile_maps: nothing done for mozart_mosaic_4bin_vbs0__kpp")
 
  case (CO2_TRACER,GHG_TRACER)
      call wrf_debug("setup_profile_maps: nothing done for the GHG options")
@@ -2144,10 +2141,7 @@ END SUBROUTINE bdy_chem_value_ghg
      case (MOZCART_KPP)
         get_last_gas = p_meko2
 
-     case (MOZART_MOSAIC_4BIN_KPP)
-        get_last_gas = p_meko2
-
-     case (MOZART_MOSAIC_4BIN_AQ_KPP)
+     case (MOZART_MOSAIC_4BIN_VBS0_KPP)
         get_last_gas = p_meko2
 
      case (CO2_TRACER,GHG_TRACER) ! No gas chemistry or deposition for GHGs

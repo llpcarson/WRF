@@ -13,7 +13,7 @@ PROGRAM convert_data
    USE module_driver_constants
    USE module_configure
    USE module_timing
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
    USE module_input_chem_data
    USE module_input_chem_bioemiss
 #endif
@@ -24,7 +24,7 @@ PROGRAM convert_data
 
    IMPLICIT NONE
 
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
   ! interface
    INTERFACE
      ! mediation-supplied 

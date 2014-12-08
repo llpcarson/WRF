@@ -32,7 +32,6 @@ CONTAINS
                      ,skintempclmean,skintempclstd                    & ! CLWRF
                      ,raincv,rainncv                                  &
                      ,dt,xtime,curr_secs2                             &
-                     ,nsteps                                          &
                                                                       )
 !----------------------------------------------------------------------
 
@@ -140,7 +139,7 @@ CONTAINS
    REAL                                      :: value
    INTEGER, INTENT(IN)                       :: clwrfH
    CHARACTER (LEN=1024)                      :: message
-   INTEGER, INTENT(INOUT)                    :: nsteps
+   INTEGER, SAVE                             :: nsteps
    LOGICAL                                   :: is_restart
 
 !-----------------------------------------------------------------

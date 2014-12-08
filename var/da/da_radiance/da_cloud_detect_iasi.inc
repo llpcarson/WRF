@@ -165,10 +165,9 @@ REAL :: ZHOOK_HANDLE
 	  AMAT(nchan,ndim)     = rad_clr(ich) / rad_obs(ich)
           ZF_CLR               = ZF_CLR + 0.5*(AMAT(nchan,ndim)-1.0)**2   
         ENDDO
-        IF (.NOT. LMATCH) then
-           if (print_detail_rad) WRITE(*,*) 'CLOUD_DETECT_IASI: No matching for channel:',i,Bands(i,JBAND)
-        ENDIF
-      ENDDO
+        IF (.NOT. LMATCH) WRITE(*,*) &
+           'CLOUD_DETECT_IASI: No matching for channel:',i,Bands(i,JBAND) 
+      ENDDO	
     ENDDO BAND_LOOP                      ! Loop over band
     
     !--------------------!

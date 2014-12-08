@@ -32,7 +32,7 @@ SUBROUTINE microphysics_driver(                                          &
                       ,accum_mode,aitken_mode,coarse_mode                &
                       ,icwmrsh3d,icwmrdp3d,shfrc3d,cmfmc3d,cmfmc2_3d     &
                       ,config_flags,fnm,fnp,rh_old_mp,lcd_old_mp         &
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
                       ,chem                                              &! For CAMMGMP scheme Prognostic aerosols
                       ,qme3d,prain3d,nevapr3d,rate1ord_cw2pr_st3d        &
                       ,dgnum4D,dgnumwet4D                                &
@@ -67,7 +67,7 @@ SUBROUTINE microphysics_driver(                                          &
                       ,snownc,    snowncv                                &
                       ,hailnc,    hailncv                                &
                       ,graupelnc, graupelncv                             &
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
                       ,rainprod, evapprod                                &
                       ,qv_b4mp, qc_b4mp, qi_b4mp, qs_b4mp                &
 #endif
@@ -79,7 +79,6 @@ SUBROUTINE microphysics_driver(                                          &
                       ,diagflag,   do_radar_ref                          &
                       ,re_cloud, re_ice, re_snow                         & ! G. Thompson
                       ,has_reqc, has_reqi, has_reqs                      & ! G. Thompson
-                      ,ccn_conc                                          & ! RAS
                       ,scalar,num_scalar                                   &
                       ,kext_ql,kext_qs,kext_qg            &
                       ,kext_qh,kext_qa                         &
@@ -89,7 +88,7 @@ SUBROUTINE microphysics_driver(                                          &
                       ,height,tempc &
                       ,TH_OLD                                            &
                       ,QV_OLD                                            &
-                      ,xlat,xlong,ivgtyp                                 &
+                      ,xlat,xlong,ivgtyp                                  &
 
                                                    )
 ! Framework
@@ -112,7 +111,7 @@ SUBROUTINE microphysics_driver(                                          &
    USE module_model_constants
    USE module_wrf_error
    USE module_configure, only: grid_config_rec_type
-#if ( WRF_CHEM == 1 )   
+#ifdef WRF_CHEM   
 !mchen   USE module_state_description, only: num_scalar               ! For CAMMGMP scheme Prognostic aerosols
    USE module_state_description, only: num_chem               ! mchen 
    USE modal_aero_data, only:  ntot_amode_cam_mam => ntot_amode ! For CAMMGMP scheme Prognostic aerosols
@@ -371,7 +370,7 @@ SUBROUTINE microphysics_driver(                                          &
                                                              shfrc3d, &    !Shallow cloud fraction
                                                              cmfmc3d, &    !Deep + Shallow Convective mass flux [ kg /s/m^2 ]
                                                            cmfmc2_3d       !Shallow convective mass flux [ kg/s/m^2 ]
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
 !4D variables required for CAMMGMP scheme
  REAL, OPTIONAL, DIMENSION( ims:ime, kms:kme, jms:jme,ntot_amode_cam_mam ),     &
         INTENT(IN) ::                                                 &
@@ -385,7 +384,7 @@ SUBROUTINE microphysics_driver(                                          &
                                                            rh_old_mp, &    !Old RH
                                                           lcd_old_mp       !Old liquid cloud fraction
 !In-outs -optional
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
  REAL, OPTIONAL, DIMENSION( ims:ime, kms:kme, jms:jme, num_chem),     &
       INTENT(INOUT) ::                                                &
                                                                  chem      !Chem array for CAMMGMP scheme Prognostic aerosols      
@@ -402,7 +401,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                                                             iradius, &    !Old Cloud fraction for CAMMGMP microphysics only                                                            
                                                         cldfra_conv 
 
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
 REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
       INTENT(INOUT), OPTIONAL ::                                                 &
                                                               qme3d, &     !Net condensation rate (kg/kg/s)
@@ -413,7 +412,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
    REAL, INTENT(INOUT),  DIMENSION(ims:ime, kms:kme, jms:jme ) ::     &
                                      F_ICE_PHY,F_RAIN_PHY,F_RIMEF_PHY
-!!$#if ( WRF_CHEM == 1 )
+!!$#ifdef WRF_CHEM
 !  REAL, INTENT(OUT), DIMENSION(ims:ime, kms:kme, jms:jme ) ::     &
    REAL, OPTIONAL, INTENT(OUT), DIMENSION(ims:ime, kms:kme, jms:jme ) ::     &
 !!$#else
@@ -470,7 +469,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                  &
          OPTIONAL,                                                &
          INTENT(IN) :: qrcuten, qscuten, qicuten
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                  &
          INTENT(INOUT) :: rainprod, evapprod
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                  &
@@ -523,7 +522,6 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
 
    LOGICAL, OPTIONAL, INTENT(IN) :: diagflag
-   REAL, INTENT(IN) :: ccn_conc ! RAS
    INTEGER, OPTIONAL, INTENT(IN) :: do_radar_ref
    REAL, DIMENSION(ims:ime,kms:kme,jms:jme), INTENT(INOUT) ::  & ! G. Thompson
                  re_cloud, re_ice, re_snow
@@ -614,14 +612,12 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 
 !-----------
        IF( PRESENT(chem_opt) .AND. PRESENT(progn) ) THEN
-       !Add pass for dust-only wrf-chem option - RAS
-       IF( (chem_opt==0 .OR. chem_opt==401) .AND. progn==1 .AND. (mp_physics==LINSCHEME  .OR. mp_physics==MORR_TWO_MOMENT)) THEN
+       IF( chem_opt==0 .AND. progn==1 .AND. (mp_physics==LINSCHEME  .OR. mp_physics==MORR_TWO_MOMENT)) THEN
           IF( PRESENT( QNDROP_CURR ) ) THEN
              CALL wrf_debug ( 100 , 'microphysics_driver: calling prescribe_aerosol_mixactivate' )
 ! 06-nov-2005 rce - id  & itimestep added to arg list
              call prescribe_aerosol_mixactivate (               &
                   id, itimestep, dt, naer,                      &
-                  ccn_conc, chem_opt,                           & !RAS13.1
                   rho, th, pi_phy, w, cldfra, cldfra_old,       &
                   z, dz8w, p8w, t8w, exch_h,                    &
                   qv_curr, qc_curr, qi_curr, qndrop_curr,       &
@@ -675,7 +671,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                   PRESENT( SNOWNC)   .AND. PRESENT ( SNOWNCV)    .AND.  &
                   PRESENT( GRAUPELNC).AND. PRESENT ( GRAUPELNCV) .AND.  &
                   PRESENT( RAINNC  ) .AND. PRESENT ( RAINNCV ) ) THEN
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
                  qv_b4mp(its:ite,kts:kte,jts:jte) = qv_curr(its:ite,kts:kte,jts:jte)
                  qc_b4mp(its:ite,kts:kte,jts:jte) = qc_curr(its:ite,kts:kte,jts:jte)
                  qi_b4mp(its:ite,kts:kte,jts:jte) = qi_curr(its:ite,kts:kte,jts:jte)
@@ -708,7 +704,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      GRAUPELNC=GRAUPELNC,                &
                      GRAUPELNCV=GRAUPELNCV,              &
                      SR=SR,                              &
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
                      RAINPROD=rainprod,                  &
                      EVAPPROD=evapprod,                  &
 #endif
@@ -737,7 +733,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
 !                  PRESENT( SNOWNC) .AND. PRESENT ( SNOWNCV) .AND.        &
 !                  PRESENT( GRAUPELNC) .AND. PRESENT ( GRAUPELNCV) .AND.  &
                   PRESENT( RAINNC  ) .AND. PRESENT ( RAINNCV ) ) THEN
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
                  qv_b4mp(its:ite,kts:kte,jts:jte) = qv_curr(its:ite,kts:kte,jts:jte)
                  qc_b4mp(its:ite,kts:kte,jts:jte) = qc_curr(its:ite,kts:kte,jts:jte)
                  qi_b4mp(its:ite,kts:kte,jts:jte) = qi_curr(its:ite,kts:kte,jts:jte)
@@ -766,7 +762,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      GRAUPELNC=GRAUPELNC,                &
                      GRAUPELNCV=GRAUPELNCV,              &
                      SR=SR,                              &
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
                      RAINPROD=rainprod,                  &
                      EVAPPROD=evapprod,                  &
 #endif
@@ -930,9 +926,6 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                  ,IMS=ims,IME=ime, JMS=jms,JME=jme, KMS=kms,KME=kme &
                  ,ITS=its,ITE=ite, JTS=jts,JTE=jte, KTS=kts,KTE=kte &
                  ,QLSINK=qlsink                                     & ! jdf for wrf-chem
-#if ( WRF_CHEM == 1 )
-                 ,EVAPPROD=evapprod,RAINPROD=rainprod               &
-#endif
                  ,PRECR=precr,PRECI=preci,PRECS=precs,PRECG=precg   & ! jdf for wrf-chem
                                                                     )
         ELSE
@@ -1518,7 +1511,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                  ,NC=qnc_curr                                       &
                  ,NR=qnr_curr                                       &
                  ,DEN=rho,PII=pi_phy,P=p,DELZ=dz8w                  &
-                 ,DELT=dt,G=g,CPD=cp,CPV=cpv,CCN0=ccn_conc          & ! RAS
+                 ,DELT=dt,G=g,CPD=cp,CPV=cpv,CCN0=n_ccn0            &
                  ,RD=r_d,RV=r_v,T0C=svpt0                           &
                  ,EP1=ep_1, EP2=ep_2, QMIN=epsilon                  &
                  ,XLS=xls, XLV0=xlv, XLF0=xlf                       &
@@ -1559,7 +1552,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                  ,NC=qnc_curr                                       &
                  ,NR=qnr_curr                                       &
                  ,DEN=rho,PII=pi_phy,P=p,DELZ=dz8w                  &
-                 ,DELT=dt,G=g,CPD=cp,CPV=cpv,CCN0=ccn_conc          & ! RAS
+                 ,DELT=dt,G=g,CPD=cp,CPV=cpv,CCN0=n_ccn0            &
                  ,RD=r_d,RV=r_v,T0C=svpt0                           &
                  ,EP1=ep_1, EP2=ep_2, QMIN=epsilon                  &
                  ,XLS=xls, XLV0=xlv, XLF0=xlf                       &
@@ -1648,12 +1641,12 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                   PRESENT( f_qi       ) .AND. PRESENT( qnc_curr    ) .AND. &
                   PRESENT( RAINNCV    ) .AND. PRESENT( SNOWNCV     ) .AND. &
                   PRESENT( qns_curr   ) .AND. PRESENT( qnr_curr    ) .AND. &
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
                   PRESENT( chem       ) .AND. PRESENT(dgnum4D      )  .AND. &
                   PRESENT( dgnumwet4D ) .AND.                           &
 #endif
                   PRESENT( qni_curr   ) .AND. PRESENT( RAINNC      ) ) THEN
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
                 qv_b4mp(its:ite,kts:kte,jts:jte) = qv_curr(its:ite,kts:kte,jts:jte)
                 qc_b4mp(its:ite,kts:kte,jts:jte) = qc_curr(its:ite,kts:kte,jts:jte)
                 qi_b4mp(its:ite,kts:kte,jts:jte) = qi_curr(its:ite,kts:kte,jts:jte)
@@ -1670,7 +1663,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      ,CMFMC3D=cmfmc3d,CMFMC2_3D=cmfmc2_3d                         &
                      ,CONFIG_FLAGS=config_flags,F_ICE_PHY=f_ice_phy               &
                      ,F_RAIN_PHY=f_rain_phy                                       &
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
                      ,DGNUM4D=dgnum4D,DGNUMWET4D=dgnumwet4D                       &
 #endif
                      ,IDS=ids,IDE=ide, JDS=jds,JDE=jde, KDS=kds,KDE=kde           &
@@ -1686,7 +1679,7 @@ REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                        &
                      ,QS_CURR=qs_curr,QR_CURR=qr_curr,NC3D=qnc_curr               &
                      ,NI3D=qni_curr,NS3D=qns_curr,NR3D=qnr_curr,QNDROP=qndrop_curr&
                      ,RH_OLD_MP=rh_old_mp,LCD_OLD_MP=lcd_old_mp                   &
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
                      ,CHEM=chem                                                   &
                      ,QME3D=qme3d,PRAIN3D=prain3d,NEVAPR3D=nevapr3d               &
                      ,RATE1ORD_CW2PR_ST3D=rate1ord_cw2pr_st3d                     &

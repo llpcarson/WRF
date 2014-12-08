@@ -15,7 +15,7 @@ MODULE module_sf_noahdrv
   USE module_sf_noahlsm_glacial_only, only: sflx_glacial
   USE module_sf_bep,      only: bep
   USE module_sf_bep_bem,  only: bep_bem
-#if ( WRF_CHEM == 1 )
+#ifdef WRF_CHEM
   USE module_data_gocart_dust
 #endif
 !-------------------------------
@@ -1116,14 +1116,14 @@ CONTAINS
 !
 !
 !      Limits to avoid dividing by small number
-            if (CHS(I,J) < 1.0E-04) then
-               CHS(I,J)  = 1.0E-04
+            if (CHS(I,J) < 1.0E-02) then
+               CHS(I,J)  = 1.0E-02
             endif
-            if (CHS2(I,J) < 1.0E-04) then
-               CHS2(I,J)  = 1.0E-04
+            if (CHS2(I,J) < 1.0E-02) then
+               CHS2(I,J)  = 1.0E-02
             endif
-            if (CQS2(I,J) < 1.0E-04) then
-               CQS2(I,J)  = 1.0E-04
+            if (CQS2(I,J) < 1.0E-02) then
+               CQS2(I,J)  = 1.0E-02
             endif
 !
             CHS_URB  = CHS(I,J)
@@ -1555,18 +1555,15 @@ CONTAINS
      CALL  SOIL_VEG_GEN_PARM( MMINLU, MMINSL )
    ENDIF
 
-! GAC-->
-! 20130219 - No longer need these - see module_data_gocart_dust
-!#if ( WRF_CHEM == 1 )
-!!
-!! need this parameter for dust parameterization in wrf/chem
-!!
-!   do I=1,NSLTYPE
-!      porosity(i)=maxsmc(i)
-!      drypoint(i)=drysmc(i)
-!   enddo
-!#endif
-! <--GAC
+#ifdef WRF_CHEM
+!
+! need this parameter for dust parameterization in wrf/chem
+!
+   do I=1,NSLTYPE
+      porosity(i)=maxsmc(i)
+      drypoint(i)=drysmc(i)
+   enddo
+#endif
 
    IF(.not.restart)THEN
 

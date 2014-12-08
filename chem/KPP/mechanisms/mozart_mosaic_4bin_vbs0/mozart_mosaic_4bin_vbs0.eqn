@@ -1,4 +1,4 @@
-#EQUATIONS {MOZART, check troee, usr5, usr17, rc_n2o5 }
+#EQUATIONS {MOZART_MOSAIC with implified SOA, check troee, usr5, usr17, rc_n2o5 }
 // photorates
  {001:J01} M{=O2}+hv=O+O  		: .20946_dp*j(Pj_o2)  ;
  {002:J02} O3+hv=O1D_CB4{+O2}  		: j(Pj_o31d) ;
@@ -114,8 +114,8 @@
  {112:073 } C3H7O2+CH3O2=CH2O+HO2+.82 CH3COCH3  : ARR2(3.75e-13_dp, 40._dp, TEMP) ;
  {113:074 } C3H7OOH+OH=C3H7O2{+H2O}        : ARR2(3.8e-12_dp, -200._dp, TEMP) ;
  {114:075 } CH3COCH3+OH=RO2{+H2O}          : 3.82e-11_dp*exp( -2000._dp/temp )+1.33e-13_dp ;
- {115:076 } RO2+NO=CH3CO3+CH2O+NO2         : ARR2(2.9e-12_dp, -300._dp, TEMP) ;
- {116:077 } RO2+HO2=ROOH{+O2}              : ARR2(8.6e-13_dp, -700._dp, TEMP) ;
+ {115:076 } RO2+NO=CH3CO3+CH2O+NO2+nume         : ARR2(2.9e-12_dp, -300._dp, TEMP) ;
+ {116:077 } RO2+HO2=ROOH+den{+O2}              : ARR2(8.6e-13_dp, -700._dp, TEMP) ;
  {117:078 } RO2+CH3O2=.3 CH3CO3+.8 CH2O+.3 HO2+.2 HYAC+.5 CH3COCHO+.5 CH3OH : ARR2(2.e-12_dp, -500._dp, TEMP) ;
  {118:079 } ROOH+OH=RO2{+H2O}              : ARR2(3.8e-12_dp, -200._dp, TEMP) ;
  {119:080 } BIGENE+OH=ENEO2                : 5.4e-11_dp ;
@@ -197,3 +197,7 @@
  {195:155 } NH3+OH=M                       : ARR2(1.7e-12_dp, -710._dp, TEMP) ;
  {196:156 } HO2=.5 H2O2                    : usr26( rh, temp ) ;
  {197:157 } C2H5O2+C2H5O2=1.6 CH3CHO+1.2 HO2+.4 C2H5OH  : 6.8e-14_dp ;
+ {198:158 } VOCA + OH   = smpa  +OH            : 1.25D-11 ;
+ {199:159 } VOCBB + OH  = smpbb +OH            : 1.25D-11 ;
+ {200:160 } ISOP + OH = biog1_c + ISOP + OH     : Keff(2.50D-11,-408.0_dp,0.0_dp,TEMP,nume,den,0.0104_dp,0.0078_dp) ;
+ {201:161 } C10H16 + OH = biog1_o + C10H16 + OH        : Keff(1.83D-11,-449.0_dp,0.0_dp,TEMP,nume,den,0.036_dp,0.2065_dp) ;

@@ -338,7 +338,6 @@ loop_psfc:   DO WHILE ( ASSOCIATED ( current ) )
 !
 !      Write out the stations with (h < elevation):
 !
-            if ( print_dry ) then
             if (current%meas%height%data < obs%info%elevation) &
               write(iunit,'(/A,A,2X,A,2X,A/A,2I6,3f12.2)')           & 
                 "Platform, ID, NAME: ",                              &
@@ -348,7 +347,6 @@ loop_psfc:   DO WHILE ( ASSOCIATED ( current ) )
                 "PSFC found ==> I, nlevel, psfc, height, elevation:",&
               counter, nlevel, psfc, current % meas % height%data,   &
                                      obs % info % elevation
-            end if !print
 
             EXIT loop_psfc
 
@@ -797,7 +795,6 @@ loop_psfc: DO WHILE (ASSOCIATED (current))
 !
 !      Write out the stations with (h < elevation):
 !
-            if ( print_vert ) then
             if (current%meas%height%data < obs%info%elevation) &
               write(iunit,'(/A,A,2X,A,2X,A/A,2I6,3f12.2)')           & 
                 "Platform, ID, NAME: ",                              &
@@ -808,7 +805,6 @@ loop_psfc: DO WHILE (ASSOCIATED (current))
               counter, nlevel, psfc, current % meas % height%data,   &
                                      obs % info % elevation
 
-            end if !print
             EXIT loop_psfc
       ELSE
            ! Do nothing
@@ -1505,12 +1501,10 @@ all_levels:&
 
                 current % meas % pressure % qc    = above_model_lid
 
-                if ( print_height_qc ) then
                 WRITE (UNIT = iunit , FMT = TRIM (fmt_level), ADVANCE = 'no') &
                "Model ptop & obs pressure = ", ptop,  &
                                             current % meas % pressure % data, &
                                  "  qc = ", current % meas % pressure % qc
-                end if !print
 
                 found = .TRUE.
 
