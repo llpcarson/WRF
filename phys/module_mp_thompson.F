@@ -5166,8 +5166,8 @@
 !.. to get near 100% RH as grid spacing moves toward 1.0km, but higher
 !.. RH over ocean required as compared to over land.
 
-      RH_00L = 0.801 + SQRT(1./(35.0+gridkm*gridkm*gridkm*0.5))
-      RH_00O = 0.835 + SQRT(1./(55.0+gridkm*gridkm*gridkm*0.5))
+      RH_00L = 0.751 + SQRT(1./(35.0+gridkm*gridkm*gridkm*0.5))
+      RH_00O = 0.785 + SQRT(1./(55.0+gridkm*gridkm*gridkm*0.5))
 
       DO j = jts,jte
       DO k = kts,kte
@@ -5450,7 +5450,7 @@
 
       do k = k1, k2
          this_iwp = max_iwp*dz(k)/tdz
-         if (cfr(k).gt.0.01.and.cfr(k).lt.0.999.and.T(k).ge.203.16) then
+         if (cfr(k).gt.0.01.and.cfr(k).lt.0.99.and.T(k).ge.203.16) then
             qi(k) = qi(k) + cfr(k)*cfr(k)*this_iwp/Rho(k)/dz(k)
          endif
       enddo
@@ -5482,7 +5482,7 @@
 
       do k = k1, k2
          this_lwp = max_lwp*dz(k)/tdz
-         if (cfr(k).gt.0.01 .and. cfr(k).lt.0.999) then
+         if (cfr(k).gt.0.01.and.cfr(k).lt.0.99.and.T(k).le.298.16) then
             qc(k) = qc(k) + cfr(k)*cfr(k)*this_lwp/Rho(k)/dz(k)
          endif
       enddo
