@@ -5166,8 +5166,8 @@
 !.. to get near 100% RH as grid spacing moves toward 1.0km, but higher
 !.. RH over ocean required as compared to over land.
 
-      RH_00L = 0.751 + SQRT(1./(35.0+gridkm*gridkm*gridkm*0.5))
-      RH_00O = 0.785 + SQRT(1./(55.0+gridkm*gridkm*gridkm*0.5))
+      RH_00L = 0.781 + SQRT(1./(35.0+gridkm*gridkm*gridkm*0.5))
+      RH_00O = 0.831 + SQRT(1./(70.0+gridkm*gridkm*gridkm*0.5))
 
       DO j = jts,jte
       DO k = kts,kte
@@ -5406,6 +5406,10 @@
          k = k - 1
       ENDDO
 
+!..Do a final total column adjustment since we may have added more than 1mm
+!.. LWP/IWP for multiple cloud decks.
+
+      call adjust_cloudFinal(cfr1d, qc1d, qi1d, R1d,dz, kts,kte,k_tropo)
 
 !     if (debugfl) then
 !     print*, ' Made-up fake profile of clouds'
@@ -5482,15 +5486,65 @@
 
       do k = k1, k2
          this_lwp = max_lwp*dz(k)/tdz
-         if (cfr(k).gt.0.01.and.cfr(k).lt.0.99.and.T(k).le.298.16) then
+         if (cfr(k).gt.0.95.and.qc(k).lt.1.E-7.and.T(k).lt.273.16) then
+            qc(k) = qc(k) + 0.05*this_lwp/Rho(k)/dz(k)
+         elseif (cfr(k).gt.0.01.and.cfr(k).lt.0.99.and.T(k).le.298.16) then
             qc(k) = qc(k) + cfr(k)*cfr(k)*this_lwp/Rho(k)/dz(k)
          endif
       enddo
 
 
       END SUBROUTINE adjust_cloudH2O
+
 !+---+-----------------------------------------------------------------+
 
+!..Do not alter any grid-explicitly resolved hydrometeors, rather only
+!.. the supposed amounts due to the cloud fraction scheme.
+
+      subroutine adjust_cloudFinal(cfr, qc, qi, Rho,dz, kts,kte,k_tropo)
+!
+      IMPLICIT NONE
+!
+      INTEGER, INTENT(IN):: kts,kte,k_tropo
+      REAL, DIMENSION(kts:kte), INTENT(IN):: cfr, Rho, dz
+      REAL, DIMENSION(kts:kte), INTENT(INOUT):: qc, qi
+      REAL:: lwp, iwp, xfac
+      INTEGER:: k
+
+      lwp = 0.
+      do k = kts, k_tropo
+         if (cfr(k).gt.0.01 .and. cfr(k).lt.0.99) then
+            lwp = lwp + qc(k)*Rho(k)*dz(k)
+         endif
+      enddo
+
+      iwp = 0.
+      do k = kts, k_tropo
+         if (cfr(k).gt.0.01 .and. cfr(k).lt.0.99) then
+            iwp = iwp + qi(k)*Rho(k)*dz(k)
+         endif
+      enddo
+
+      if (lwp .gt. 1.0) then
+         xfac = 1./lwp
+         do k = kts, k_tropo
+            if (cfr(k).gt.0.01 .and. cfr(k).lt.0.99) then
+               qc(k) = qc(k)*xfac
+            endif
+         enddo
+      endif
+
+      if (iwp .gt. 1.0) then
+         xfac = 1./iwp
+         do k = kts, k_tropo
+            if (cfr(k).gt.0.01 .and. cfr(k).lt.0.99) then
+               qi(k) = qi(k)*xfac
+            endif
+         enddo
+      endif
+
+      END SUBROUTINE adjust_cloudFinal
+!+---+-----------------------------------------------------------------+
 
 !+---+-----------------------------------------------------------------+
 END MODULE module_mp_thompson
