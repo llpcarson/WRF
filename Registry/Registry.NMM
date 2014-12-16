@@ -461,7 +461,7 @@ state  real  QC_CU         ikj  misc     1   -      r      "QC_CU"        "CLOUD
 state  real  QI_CU         ikj  misc     1   -      r      "QI_CU"        "CLOUD ICE MIXUNG RATIO FROM A CU SCHEME"    "kg kg-1"
 state    real  GD_CLDFR         ikj      misc        1         -      r     "GD_CLDFR"              "GD CLOUD Fraction"         " ? "
 # upward and downward clearsky and total diagnostic fluxes for radiation (RRTMG)
-state    real  ACSWUPT          ij      misc        1         -      rhdu     "ACSWUPT"               "ACCUMULATED UPWELLING SHORTWAVE FLUX AT TOP"          "J m-2"
+state    real  ACSWUPT          ij      misc        1         -      rh023du     "ACSWUPT"               "ACCUMULATED UPWELLING SHORTWAVE FLUX AT TOP"          "J m-2"
 state    real  ACSWUPTC         ij      misc        1         -      rhdu     "ACSWUPTC"              "ACCUMULATED UPWELLING CLEAR SKY SHORTWAVE FLUX AT TOP" "J m-2"
 state    real  ACSWDNT          ij      misc        1         -      rh023du     "ACSWDNT"               "ACCUMULATED DOWNWELLING SHORTWAVE FLUX AT TOP"          "J m-2"
 state    real  ACSWDNTC         ij      misc        1         -      rhdu     "ACSWDNTC"              "ACCUMULATED DOWNWELLING CLEAR SKY SHORTWAVE FLUX AT TOP" "J m-2"
