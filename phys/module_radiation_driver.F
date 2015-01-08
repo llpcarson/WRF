@@ -1280,7 +1280,6 @@ CONTAINS
                         julyr=julyr,julday=julday,gfdl_lw=gfdl_lw,gfdl_sw=gfdl_sw,                &
                         CFRACL=cfracl,CFRACM=cfracm,CFRACH=cfrach,                        & !Added
                         ACFRST=acfrst,NCFRST=ncfrst,ACFRCV=acfrcv,NCFRCV=ncfrcv,                 & !Added
-                        gridkm=gridkm,                                                       &
                         ids=ids,ide=ide, jds=jds,jde=jde, kds=kds,kde=kde,                   &
                         ims=ims,ime=ime, jms=jms,jme=jme, kms=kms,kme=kme,                   &
                         its=its,ite=ite, jts=jts,jte=jte, kts=kts,kte=kte                    )
@@ -1818,7 +1817,6 @@ CONTAINS
                         julyr=julyr,julday=julday,gfdl_lw=gfdl_lw,gfdl_sw=gfdl_sw,                &
                         CFRACL=cfracl,CFRACM=cfracm,CFRACH=cfrach,                        & !Added
                         ACFRST=acfrst,NCFRST=ncfrst,ACFRCV=acfrcv,NCFRCV=ncfrcv,                 & !Added
-                        gridkm=gridkm,                                                       &
                         ids=ids,ide=ide, jds=jds,jde=jde, kds=kds,kde=kde,                   &
                         ims=ims,ime=ime, jms=jms,jme=jme, kms=kms,kme=kme,                   &
                         its=its,ite=ite, jts=jts,jte=jte, kts=kts,kte=kte                    )
