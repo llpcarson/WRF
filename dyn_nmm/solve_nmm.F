@@ -39,7 +39,7 @@
       USE MODULE_NONHY_DYNAM,           ONLY: EPS,VADZ,HADZ
       USE MODULE_DIFFUSION_NMM,         ONLY: HDIFF
       USE MODULE_BNDRY_COND,            ONLY: &
-           BOCOV, MASS_BOUNDARY, MP_BULK_BOUNDARY, MP_SPECIES_BDY
+           BOCOV, MASS_BOUNDARY, MP_BULK_BOUNDARY, MP_SPECIES_BDY, RESTART_BDY
       USE MODULE_PHYSICS_CALLS
       USE MODULE_EXT_INTERNAL
       USE MODULE_PRECIP_ADJUST
@@ -373,6 +373,35 @@
         OPERATIONAL_PHYSICS=.TRUE.
 !
       ENDIF
+!-----------------------------------------------------------------------
+! HANDLE MOAD BOUNDARY AFTER RESTART
+      if(grid%id/=1) then
+         ! Only MOAD copies domain into boundary arrays.
+         grid%restart_bdy=.false.
+      endif
+      if(grid%restart_bdy) then
+         grid%restart_bdy=.false.
+         call wrf_message('RESTART_BDY: Copying domain into boundary arrays for MOAD restart.')
+         CALL RESTART_BDY(  &
+              grid%PD_BXS,grid%PD_BXE,grid%PD_BYS,grid%PD_BYE, &
+              grid%T_BXS,grid%T_BXE,grid%T_BYS,grid%T_BYE,     &
+              grid%Q_BXS,grid%Q_BXE,grid%Q_BYS,grid%Q_BYE,     &
+              grid%U_BXS,grid%U_BXE,grid%U_BYS,grid%U_BYE,     &
+              grid%V_BXS,grid%V_BXE,grid%V_BYS,grid%V_BYE,     &
+              grid%Q2_BXS,grid%Q2_BXE,grid%Q2_BYS,grid%Q2_BYE, &
+              grid%PD, grid%T, grid%Q, grid%Q2, grid%U,grid%V, &
+              grid%spec_bdy_width,                             &
+              MOIST,N_MOIST,                                   &
+              MOIST_bxs,MOIST_bxe,MOIST_bys,MOIST_bye,         &
+              MOIST_btxs,MOIST_btxe,MOIST_btys,MOIST_btye,     &
+              SCALAR,NUM_SCALAR,                               &
+              SCALAR_bxs,SCALAR_bxe,SCALAR_bys,SCALAR_bye,     &
+              SCALAR_btxs,SCALAR_btxe,SCALAR_btys,SCALAR_btye, &
+              ids,idf,jds,jdf,kds,kde,                         &
+              ims,ime,jms,jme,kms,kme,                         &
+              its,ite,jts,jte,kts,kte)
+      endif
+
 !
 !-----------------------------------------------------------------------
 !

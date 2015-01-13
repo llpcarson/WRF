@@ -159,6 +159,9 @@ MODULE module_domain_type
 
       LOGICAL      , DIMENSION ( 4 )                      :: bdy_mask         ! which boundaries are on processor
       LOGICAL                                             :: interp_mp        ! .true. = MOIST, SCALAR u,d,f,s will be called
+#if ( NMM_CORE == 1)
+      LOGICAL                                             :: restart_bdy
+#endif
       LOGICAL                                             :: first_force
 
       ! domain dimensions

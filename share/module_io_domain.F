@@ -116,9 +116,22 @@ CONTAINS
     TYPE(grid_config_rec_type),  INTENT(IN   )    :: config_flags
     INTEGER, INTENT(IN) :: fid
     INTEGER, INTENT(INOUT) :: ierr
+    character(len=255) :: message
     IF ( config_flags%io_form_restart .GT. 0 ) THEN
       CALL input_wrf ( fid , grid , config_flags , restart_only , ierr )
     ENDIF
+#if ( NMM_CORE == 1 )
+    grid%restart_bdy = (grid%id == 1)
+    if(grid%restart_bdy) then
+301    format('Domain ',I0,': restart_bdy=.TRUE.')
+       write(message,301) grid%id
+       call wrf_message(message)
+    else
+       write(message,311) grid%id
+311    format('Domain ',I0,': restart_bdy=.FALSE.')
+       call wrf_message(message)
+    endif
+#endif
     RETURN
   END SUBROUTINE input_restart
 

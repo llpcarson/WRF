@@ -1884,6 +1884,217 @@
 !
 !-----------------------------------------------------------------------
 !
+      SUBROUTINE RESTART_BDY( &
+     &                ,PD_BXS, PD_BXE, PD_BYS, PD_BYE                   &
+     &                ,T_BXS, T_BXE, T_BYS, T_BYE                       &
+     &                ,Q_BXS, Q_BXE, Q_BYS, Q_BYE                       &
+     &                ,U_BXS, U_BXE, U_BYS, U_BYE                       &
+     &                ,V_BXS, V_BXE, V_BYS, V_BYE                       &
+     &                ,Q2_BXS, Q2_BXE, Q2_BYS, Q2_BYE                   &
+
+     &                ,PD,T,Q,Q2,U,V                                    &
+     &                ,SPEC_BDY_WIDTH                                   &  
+
+     &                ,MOIST,N_MOIST                                    &
+     &                ,MOIST_bxs,MOIST_bxe,MOIST_bys,MOIST_bye          &
+     &                ,SCALAR,N_SCALAR                                  &
+     &                ,SCALAR_bxs,SCALAR_bxe,SCALAR_bys,SCALAR_bye      &
+
+     &                ,IDS,IDE,JDS,JDF,KDS,KDE                          &
+     &                ,IMS,IME,JMS,JME,KMS,KME                          &
+     &                ,ITS,ITE,JTS,JTE,KTS,KTE
+      IMPLICIT NONE
+      INTEGER,INTENT(IN) :: IDS,IDF,JDS,JDF,KDS,KDE                     &
+     &                     ,IMS,IME,JMS,JME,KMS,KME                     &
+     &                     ,ITS,ITE,JTS,JTE,KTS,KTE
+      INTEGER,INTENT(IN) :: SPEC_BDY_WIDTH
+!
+      REAL,DIMENSION(IMS:IME,1,SPEC_BDY_WIDTH)                          &
+     &                           ,INTENT(OUT)   :: PD_BYS, PD_BYE
+!
+      REAL,DIMENSION(IMS:IME,KMS:KME,SPEC_BDY_WIDTH)                   &
+     &                           ,INTENT(OUT)   :: T_BYS, T_BYE        &
+     &                                            ,U_BYS, U_BYE        &
+     &                                            ,V_BYS, V_BYE        &
+     &                                            ,Q_BYS, Q_BYE        &
+     &                                            ,Q2_BYS, Q2_BYE
+
+      REAL,DIMENSION(JMS:JME,1,SPEC_BDY_WIDTH)                         &
+     &                           ,INTENT(OUT)   :: PD_BXS, PD_BXE
+
+      REAL,DIMENSION(JMS:JME,KMS:KME,SPEC_BDY_WIDTH)                   &
+     &                           ,INTENT(OUT)   :: T_BXS, T_BXE        &
+     &                                            ,U_BXS, U_BXE        &
+     &                                            ,V_BXS, V_BXE        &
+     &                                            ,Q_BXS, Q_BXE        &
+     &                                            ,Q2_BXS, Q2_BXE
+                                               
+!
+      REAL,DIMENSION(IMS:IME,JMS:JME),INTENT(IN) :: PD
+!
+      REAL,DIMENSION(IMS:IME,JMS:JME,KMS:KME),INTENT(IN) :: Q,Q2,T,U,V
+
+      real,dimension(ims:ime,kms:kme,spec_bdy_width,n_moist), &
+           intent(out) :: MOIST_bys,MOIST_bye
+      
+      real,dimension(jms:jme,kms:kme,spec_bdy_width,n_moist), &
+           intent(out) :: MOIST_bxs,MOIST_bxe
+      
+      real,dimension(ims:ime,kms:kme,spec_bdy_width,n_scalar), &
+           intent(out) :: SCALAR_bys,SCALAR_bye
+      
+      real,dimension(jms:jme,kms:kme,spec_bdy_width,n_scalar), &
+           intent(out) :: SCALAR_bxs,SCALAR_bxe
+      
+      real,intent(in) :: MOIST(ims:ime,jms:jme,kms:kme,N_MOIST)
+      real,intent(in) :: SCALAR(ims:ime,jms:jme,kms:kme,N_SCALAR)
+
+      ! - locals - !
+
+      integer :: im,jm, i,j,k,im, ib,jb, ii,jj, ibdy, i1,i2, j1,j2
+      logical :: w_bdy,s_bdy,e_bdy,n_bdy
+
+      im=ide-ids+1
+      jm=jde-jds+1
+
+      ! Do I have this boundary?
+      W_BDY=(ITS==IDS)
+      E_BDY=(ITE>=IDF)
+      S_BDY=(JTS==JDS)
+      N_BDY=(JTE>=JDF)
+
+      ! I loop ends for N/S bdy copying:
+      i1=MAX(ITS-1,IDS)
+      i2=MIN(ITE+1,IDE)
+      
+      ! J loop ends for E/W bdy copying:
+      j1=MAX(JTS-1,JDS+3-1)
+      if(mod(j1,2)/=1) j1=j1+1
+      j2=MIN(JTE+1,JDE-2)
+      if(mod(j2,2)/=1) j2=j2-1
+
+      ns_do: do ibdy=1,2
+         ns_if: if(s_bdy .and. ibdy==1) then
+            jb=1
+            jj=1
+            do k=kts,kte
+               if(k==kts) pd_bys(i,1,jb)=pd(i,jj)
+               do i=i1,i2
+                  t_bys(i,k,jb)=t(i,jj,k)
+                  q_bys(i,k,jb)=q(i,jj,k)
+                  q2_bys(i,k,jb)=q2(i,jj,k)
+                  u_bys(i,k,jb)=u(i,jj,k)
+                  v_bys(i,k,jb)=v(i,jj,k)
+               enddo
+            enddo
+            do IM=1,N_MOIST
+               do k=kts,kte
+                  do i=i1,i2
+                     moist_bys(i,k,jb,im)=moist(i,jj,k,im)
+                  enddo
+               enddo
+            enddo
+            do IM=2,N_SCALAR
+               do k=kts,kte
+                  do i=i1,i2
+                     scalar_bys(i,k,jb,im)=scalar(i,jj,k,im)
+                  enddo
+               enddo
+            end do
+         elseif(n_bdy .and. ibdy==2) then
+            jb=1
+            jj=jjm
+
+            do k=kts,kte
+               if(k==kts) pd_bye(i,1,jb)=pd(i,jj)
+               do i=i1,i2
+                  t_bye(i,k,jb)=t(i,jj,k)
+                  q_bye(i,k,jb)=q(i,jj,k)
+                  q2_bye(i,k,jb)=q2(i,jj,k)
+                  u_bye(i,k,jb)=u(i,jj,k)
+                  v_bye(i,k,jb)=v(i,jj,k)
+               enddo
+            enddo
+            do IM=1,N_MOIST
+               do k=kts,kte
+                  do i=i1,i2
+                     moist_bye(i,k,jb,im)=moist(i,jj,k,im)
+                  enddo
+               enddo
+            enddo
+            do IM=2,N_SCALAR
+               do k=kts,kte
+                  do i=i1,i2
+                     scalar_bye(i,k,jb,im)=scalar(i,jj,k,im)
+                  enddo
+               enddo
+            end do
+         end if ns_if
+      end do ns_do
+
+      ! ------------------------------------------------------------
+
+      ew_do: do ibdy=1,2
+         ew_if: if(w_bdy .and. ibdy==1) then
+            ib=1
+            ii=1
+            do k=kts,kte
+               if(k==kts) pd_bxs(j,1,ib)=pd(ii,j)
+               do j=j1,j2,2
+                  t_bxs(j,k,ib)=t(ii,j,k)
+                  q_bxs(j,k,ib)=q(ii,j,k)
+                  q2_bxs(j,k,ib)=q2(ii,j,k)
+                  u_bxs(j,k,ib)=u(ii,j,k)
+                  v_bxs(j,k,ib)=v(ii,j,k)
+               enddo
+            enddo
+            do IM=1,N_MOIST
+               do k=kts,kte
+                  do j=j1,j2,2
+                     moist_bxs(j,k,ib,im)=moist(ii,j,k,im)
+                  enddo
+               enddo
+            enddo
+            do IM=2,N_SCALAR
+               do k=kts,kte
+                  do j=j1,j2,2
+                     scalar_bxs(i,k,ib,im)=scalar(ii,j,k,im)
+                  enddo
+               enddo
+            end do
+         elseif(e_bdy .and. ibdy==2) then
+            ib=1
+            ii=iim
+
+            do k=kts,kte
+               if(k==kts) pd_bxe(j,1,ib)=pd(ii,j)
+               do j=j1,j2,2
+                  t_bxe(j,k,ib)=t(ii,j,k)
+                  q_bxe(j,k,ib)=q(ii,j,k)
+                  q2_bxe(j,k,ib)=q2(ii,j,k)
+                  u_bxe(j,k,ib)=u(ii,j,k)
+                  v_bxe(j,k,ib)=v(ii,j,k)
+               enddo
+            enddo
+            do IM=1,N_MOIST
+               do k=kts,kte
+                  do j=j1,j2,2
+                     moist_bxe(j,k,ib,im)=moist(ii,j,k,im)
+                  enddo
+               enddo
+            enddo
+            do IM=2,N_SCALAR
+               do k=kts,kte
+                  do j=j1,j2,2
+                     scalar_bxe(j,k,ib,im)=scalar(ii,j,k,im)
+                  enddo
+               enddo
+            end do
+         end if ew_if
+      end do ew_do
+
+      END SUBROUTINE RESTART_BDY
+
       END MODULE MODULE_BNDRY_COND
 !
 !-----------------------------------------------------------------------
