@@ -2004,20 +2004,12 @@
       CALL domain_setgmtetc( GRID, START_OF_SIMULATION )
 
       if(restrt) then
-#ifdef HWRF
-!zhang 
-     CALL nl_get_julyr (grid%id, grid%julyr)
-     CALL nl_get_julday (grid%id, grid%julday)
-     CALL nl_get_gmt (grid%id, grid%gmt)
-!zhang end
-#else
         CALL domain_clock_get( grid, current_time=currentTime )
         CALL WRFU_TimeGet( currentTime, YY=grid%julyr, dayOfYear=grid%julday, &
                            H=hr, M=mn, S=sec, MS=ms, rc=rc)
         grid%gmt=hr+real(mn)/60.+real(sec)/3600.+real(ms)/(1000*3600)
         WRITE( wrf_err_message , * ) 'DEBUG start_domain_nmm():  gmt = ',grid%gmt
         CALL wrf_debug( 150, TRIM(wrf_err_message) )
-#endif
       endif
 
 ! Several arguments are RCONFIG entries in Registry.NMM. Registry no longer
