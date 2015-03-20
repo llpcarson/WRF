@@ -339,7 +339,7 @@
       ETAMP_PHYSICS=.FALSE.
 !
       IF (CONFIG_FLAGS%MP_PHYSICS == ETAMPNEW .OR.                 &
-     &    CONFIG_FLAGS%MP_PHYSICS == ETAMPOLD .OR.                 &
+     &    CONFIG_FLAGS%MP_PHYSICS == ETAMP_HR .OR.                 &
      &    CONFIG_FLAGS%MP_PHYSICS == ETAMPNEW_OLD .OR.                 &
      &    CONFIG_FLAGS%MP_PHYSICS == ETAMP_HWRF ) THEN
 !
@@ -952,6 +952,10 @@
             ids,ide,jds,jde,kds,kde, &
             ims,ime,jms,jme,kms,kme, &
             its,ite,jts,jte,kts,kte)
+      call check_grid(grid,config_flags,'before ADV2', &
+            ids,ide,jds,jde,kds,kde, &
+            ims,ime,jms,jme,kms,kme, &
+            its,ite,jts,jte,kts,kte)
           CALL ADV2                &
           (grid%upstrm                  &
           ,MYPE,PARAM_FIRST_SCALAR,NUM_SZJ &
@@ -977,6 +981,10 @@
 !zhang#ifdef DM_PARALLEL
 !zhang#    include "HALO_TRACERS.inc"
 !zhang#endif
+      call check_grid(grid,config_flags,'before MONO', &
+            ids,ide,jds,jde,kds,kde, &
+            ims,ime,jms,jme,kms,kme, &
+            its,ite,jts,jte,kts,kte)
       call check_grid(grid,config_flags,'before MONO', &
             ids,ide,jds,jde,kds,kde, &
             ims,ime,jms,jme,kms,kme, &

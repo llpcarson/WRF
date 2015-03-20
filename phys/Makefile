@@ -32,12 +32,12 @@ MODULES = \
 	module_data_cam_mam_asect.o \
 	module_cam_infnan.o \
 	module_bl_ysu.o \
+	module_bl_shinhong.o \
 	module_bl_mrf.o \
 	module_bl_gfs.o \
 	module_bl_gfs2011.o \
 	module_bl_myjpbl.o \
 	module_bl_qnsepbl.o \
-	module_bl_qnsepbl09.o \
 	module_bl_acm.o \
 	module_bl_mynn.o \
 	module_bl_fogdes.o \
@@ -57,6 +57,7 @@ MODULES = \
 	module_cu_kf.o  \
 	module_cu_bmj.o \
 	module_cu_kfeta.o \
+	module_cu_mskf.o \
 	module_cu_tiedtke.o\
 	module_cu_gd.o \
 	module_cu_gf.o \
@@ -64,6 +65,7 @@ MODULES = \
 	module_cu_sas.o \
 	module_cu_mesosas.o \
 	module_cu_osas.o \
+	module_cu_kfcup.o \
 	module_mp_radar.o \
 	module_mp_kessler.o \
 	module_mp_lin.o  \
@@ -93,6 +95,8 @@ MODULES = \
 	module_ra_rrtm.o  \
 	module_ra_rrtmg_lw.o  \
 	module_ra_rrtmg_sw.o  \
+	module_ra_rrtmg_lwf.o  \
+	module_ra_rrtmg_swf.o  \
         module_ra_cam_support.o \
         module_ra_cam.o \
 	module_ra_gfdleta.o \

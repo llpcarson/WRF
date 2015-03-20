@@ -80,7 +80,7 @@ MODULE module_input_chem_data
     REAL                                         :: so4vaptoaer
     DATA so4vaptoaer/.999/
 
-    CHARACTER (LEN=4), DIMENSION(logg) :: ggnam
+    CHARACTER (LEN=20), DIMENSION(logg) :: ggnam !BSINGH(12/04/13): changed length(LEN) from 4 to 20
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !
@@ -322,10 +322,11 @@ SUBROUTINE setup_gasprofile_maps(chem_opt, numgas)
   case (RADM2, RADM2_KPP, RADM2SORG, RADM2SORG_AQ, RADM2SORG_AQCHEM, RADM2SORG_KPP, &
         RACM_KPP, RACMPM_KPP, RACM_MIM_KPP, RACMSORG_AQ, RACMSORG_AQCHEM_KPP,       &
         RACM_ESRLSORG_AQCHEM_KPP, RACM_ESRLSORG_KPP, RACMSORG_KPP, RACM_SOA_VBS_KPP,&
-        GOCARTRACM_KPP, GOCARTRADM2,GOCARTRADM2_KPP,CHEM_TRACER, CHEM_TRACE2)
+        GOCARTRACM_KPP, GOCARTRADM2,CHEM_TRACER, CHEM_TRACE2)
      call setup_gasprofile_map_radm_racm
 
-  case (SAPRC99_KPP,SAPRC99_MOSAIC_4BIN_VBS2_KPP)
+  case (SAPRC99_KPP,SAPRC99_MOSAIC_4BIN_VBS2_KPP,      &
+     SAPRC99_MOSAIC_8BIN_VBS2_AQ_KPP, SAPRC99_MOSAIC_8BIN_VBS2_KPP)!BSINGH(12/04/2013): Added SAPRC 8 bin and non-aq on 04/03/2014)
      call setup_gasprofile_map_saprcnov
 
 
@@ -2102,10 +2103,11 @@ END SUBROUTINE bdy_chem_value_ghg
      case (RADM2, RADM2_KPP, RADM2SORG, RADM2SORG_AQ, RADM2SORG_AQCHEM, RADM2SORG_KPP, &
            RACM_KPP, RACMPM_KPP, RACM_MIM_KPP, RACMSORG_AQ, RACMSORG_AQCHEM_KPP,       &
            RACM_ESRLSORG_AQCHEM_KPP, RACM_ESRLSORG_KPP, RACMSORG_KPP, RACM_SOA_VBS_KPP,& 
-           GOCARTRACM_KPP,GOCARTRADM2,GOCARTRADM2_KPP)
+           GOCARTRACM_KPP,GOCARTRADM2)
         get_last_gas = p_ho2
 
-     case (CBMZ_MOSAIC_4BIN_VBS2_KPP, SAPRC99_KPP,SAPRC99_MOSAIC_4BIN_VBS2_KPP)
+     case (CBMZ_MOSAIC_4BIN_VBS2_KPP, SAPRC99_KPP,SAPRC99_MOSAIC_4BIN_VBS2_KPP, &
+          SAPRC99_MOSAIC_8BIN_VBS2_AQ_KPP,SAPRC99_MOSAIC_8BIN_VBS2_KPP )!BSINGH(12/13/2013): Added SAPRC 8 bin AQ case and non-aq on 04/03/2014
         get_last_gas = p_ch4
 
 
