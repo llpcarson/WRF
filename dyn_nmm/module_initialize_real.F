@@ -2108,6 +2108,14 @@ CONTAINS
      character(len=255) :: message
      INTEGER :: count, bigcount, noncount
      REAL :: dlon, mindist,maxdist,dist,maxweight
+     logical, external :: wrf_dm_on_monitor
+
+     if(.not. wrf_dm_on_monitor()) then
+        call wrf_debug(1,'Slave compute process will wait for monitor process to make the fort.65 coupling info file.')
+        return
+     else
+        call wrf_debug(1,'Monitor process is making the fort.65 coupling info file.')
+     endif
 
      allocate(NHLAT(nide,njde),NHLON(nide,njde),NVLAT(nide,njde))
      allocate(NVLON(nide,njde),HRES_SM(nide,njde))
