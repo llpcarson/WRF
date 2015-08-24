@@ -91,7 +91,7 @@ CONTAINS
                          RPHNDGDTEN,RQVNDGDTEN,RMUNDGDTEN,       &    ! Optional
                          FGDT,STEPFG,                            &    ! Optional
                          cugd_tten,cugd_ttens,cugd_qvten,        &    ! Optional
-                         cugd_qvtens,cugd_qcten,                 &    ! Optional
+                         cugd_qvtens,cugd_qcten,cugd_qiten,      &    ! Optional
                          ISNOWXY, ZSNSOXY, TSNOXY,                        & ! Optional Noah-MP
                          SNICEXY, SNLIQXY, TVXY, TGXY, CANICEXY,          & ! Optional Noah-MP
                          CANLIQXY, EAHXY, TAHXY, CMXY,                    & ! Optional Noah-MP
@@ -397,7 +397,7 @@ CONTAINS
 
    REAL,     DIMENSION( ims:ime , kms:kme , jms:jme ) , OPTIONAL, INTENT(OUT) ::    &
              cugd_tten,cugd_ttens,cugd_qvten,                &
-             cugd_qvtens,cugd_qcten
+             cugd_qvtens,cugd_qcten,cugd_qiten
    REAL,     DIMENSION( ims:ime , jms:jme ) , INTENT(INOUT) ::         &
              XLAND,ZNT,Z0,UST,MOL,LU_INDEX,                         &
              PBLH,THC,MAVAIL,HFX,QFX,RAINBL
@@ -1213,7 +1213,7 @@ integer myproc
                 APR_GR,APR_W,APR_MC,APR_ST,APR_AS,              &
                 APR_CAPMA,APR_CAPME,APR_CAPMI,                  &
                 cugd_tten,cugd_ttens,cugd_qvten,                &
-                cugd_qvtens,cugd_qcten,                         &
+                cugd_qvtens,cugd_qcten,cugd_qiten,              &
                 allowed_to_read, start_of_simulation,           &
                 ids, ide, jds, jde, kds, kde,                   &
                 ims, ime, jms, jme, kms, kme,                   &
@@ -3138,6 +3138,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
                       APR_CAPMA,APR_CAPME,APR_CAPMI,               &
                       cugd_tten,cugd_ttens,cugd_qvten,             &
                       cugd_qvtens,cugd_qcten,                      &
+                      cugd_qiten,                                  &
                       allowed_to_read, start_of_simulation,        &
                       ids, ide, jds, jde, kds, kde,                &
                       ims, ime, jms, jme, kms, kme,                &
@@ -3150,6 +3151,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
    USE MODULE_CU_BMJ
    USE module_cu_gd,  ONLY : GDINIT
    USE module_cu_g3,  ONLY : G3INIT
+   USE module_cu_gf,  ONLY : GFINIT
    USE module_cu_sas
    USE module_cu_mesosas
    USE module_cu_osas
@@ -3188,7 +3190,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
    
 
    REAL ,   DIMENSION( ims:ime , kms:kme , jms:jme ) , OPTIONAL, INTENT(INOUT) ::    &    
-                        cugd_tten,cugd_ttens,cugd_qvten,            &    
+                        cugd_tten,cugd_ttens,cugd_qvten,cugd_qiten,            &    
                         cugd_qvtens,cugd_qcten, RQCNCUTEN, RQINCUTEN
 
    REAL ,   DIMENSION( ims:ime , kms:kme , jms:jme ) , INTENT(OUT) :: W0AVG
@@ -3209,8 +3211,9 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
 
    REAL ,   DIMENSION( ims:ime , jms:jme ), INTENT(INOUT):: NCA
 
-   REAL ,   DIMENSION( ims:ime , jms:jme ), INTENT(INOUT):: MASS_FLUX,   &
-                                   APR_GR,APR_W,APR_MC,APR_ST,APR_AS,    &    
+   REAL ,   DIMENSION( ims:ime , jms:jme ) , OPTIONAL, INTENT(INOUT) ::  &
+                                   MASS_FLUX,                            &
+                                   APR_GR,APR_W,APR_MC,APR_ST,APR_AS,    &
                                    APR_CAPMA,APR_CAPME,APR_CAPMI
    INTEGER, DIMENSION( ims:ime , jms:jme ), INTENT(INOUT):: LOWLYR
 
@@ -3316,6 +3319,18 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
                       ims, ime, jms, jme, kms, kme,               &
                       its, ite, jts, jte, kts, kte                )
 #endif
+     CASE (GFSCHEME)
+          CALL gfinit(RTHCUTEN,RQVCUTEN,RQCCUTEN,RQICUTEN,        &
+                      MASS_FLUX,cp,restart,                       &
+                      P_QC,P_QI,PARAM_FIRST_SCALAR,               &
+                      RTHFTEN, RQVFTEN,                           &
+                      cugd_tten,cugd_qvten,                       &
+                      cugd_qcten,cugd_qiten,                      &
+                      allowed_to_read ,                           &
+                      ids, ide, jds, jde, kds, kde,               &
+                      ims, ime, jms, jme, kms, kme,               &
+                      its, ite, jts, jte, kts, kte                )
+
      CASE (SASSCHEME)
           CALL sasinit(RTHCUTEN,RQVCUTEN,RQCCUTEN,RQICUTEN,       &
                       RUCUTEN,RVCUTEN,                            &   ! gopal's doing for SAS
