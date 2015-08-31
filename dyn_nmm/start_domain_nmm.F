@@ -2106,6 +2106,10 @@
      &             ,ITS, ITE, JTS, JTE, KTS, KTE                        &
      &             ,NUM_URBAN_LAYERS,NUM_URBAN_HI                       &
      &             ,GRID%RAINCV_A,GRID%RAINCV_B                         &
+     &             ,gd_cloud=grid%gd_cloud,gd_cloud2=grid%gd_cloud2     & ! Optional GF-Cu
+     &             ,cugd_tten=grid%cugd_tten,cugd_ttens=grid%cugd_ttens & ! Optional GF-Cu
+     &             ,cugd_qvten=grid%cugd_qvten,cugd_qvtens=grid%cugd_qvtens   &    ! Optional GF-Cu
+     &             ,cugd_qcten=grid%cugd_qcten,cugd_qiten=grid%cugd_qiten     &    ! Optional GF-Cu
      &               ,ISNOWXY=grid%ISNOWXY, ZSNSOXY=grid%ZSNSOXY, TSNOXY=grid%TSNOXY,    & ! Optional Noah-MP
      &                SNICEXY=grid%SNICEXY, SNLIQXY=grid%SNLIQXY, TVXY=grid%TVXY,        & ! Optional Noah-MP
      &                TGXY=grid%TGXY, CANICEXY=grid%CANICEXY,                            & ! Optional Noah-MP

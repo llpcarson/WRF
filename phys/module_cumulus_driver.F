@@ -171,13 +171,14 @@ CONTAINS
    !
    !  1. Kain & Fritsch (1993)
    !  2. Betts-Miller-Janjic (Janjic, 1994)
-   !  3. Grell-Devenyi (Grell and Devenyi, 2002)
+   !  3. Grell-Freitas (Grell and Freitas, 2013)
    !  4. Simplified Arakawa-Schubert scheme (NCEP)
    !     (adapted by Zhang and Wang to work with ARW in V3.3)
    !  5. Grell 3D ensemble scheme
    !  6. Modified Tiedtke scheme (Zhang and Wang 2010)
    ! 14. New simplified Arakawa-Schubert scheme (NCEP, YSU)
    ! 16. New Tiedtke scheme (Bechtold et al. 2004, 2008, 2014)
+   ! 93. Grell-Devenyi (Grell and Devenyi, 2002)
    !
 !----------------------------------------------------------------------
    IMPLICIT NONE
@@ -766,7 +767,8 @@ CONTAINS
       !$OMP END PARALLEL DO
       endif
 
-      IF ( cu_physics == G3SCHEME .OR.  cu_physics == GFSCHEME .OR.     &
+      IF ( cu_physics == G3SCHEME .OR.  cu_physics == GDSCHEME .OR.     &
+           cu_physics == GFSCHEME .OR.                                  &
            cu_physics == KFETASCHEME .OR. cu_physics == MSKFSCHEME ) THEN
 #ifdef DM_PARALLEL
 #include "HALO_CUP_G3_IN.inc"
@@ -1121,45 +1123,38 @@ CONTAINS
 #endif
           CALL GFDRV(                                           &
                 DT=dt, ITIMESTEP=itimestep, DX=dx               &
-               ,U=u,V=v,T=t,W=w ,RHO=rho                        &
-               ,P=p,PI=pi,Q=qv_curr,RAINCV=raincv               &
+               ,RHO=rho,RAINCV=raincv,PRATEC=tmppratec          &
+               ,U=u,V=v,T=t,W=w                                 &
+               ,Q=qv_curr,P=p,PI=pi                             &
                ,DZ8W=dz8w ,P8W=p8w,XLV=xlv,CP=cp,G=g,R_V=r_v    &
-               ,APR_GR=apr_gr,APR_W=apr_w,APR_MC=apr_mc         &
-               ,APR_ST=apr_st,APR_AS=apr_as,PRATEC=tmppratec    &
-               ,APR_CAPMA=apr_capma,APR_CAPME=apr_capme         &
-               ,APR_CAPMI=apr_capmi,MASS_FLUX=mass_flux         &
-               ,HT=ht,qfx=qfx,hfx=hfx                           &
+               ,htop=htop,hbot=hbot                             &
+               ,ktop_deep=ktop_deep                             &
+               ,CU_ACT_FLAG=CU_ACT_FLAG,warm_rain=warm_rain     &
+               ,MASS_FLUX=mass_flux                             &
+               ,HT=ht,hfx=hfx,qfx=qfx                           &
                ,xland=xland,gsw=gsw,edt_out=edt_out             &
                ,GDC=gd_cloud,GDC2=gd_cloud2,kpbl=kpbl           &
                ,k22_shallow=k22_shallow                         &
                ,kbcon_shallow=kbcon_shallow                     &
                ,ktop_shallow=ktop_shallow                       &
-               ,ktop_deep=ktop_deep                             &
                ,xmb_shallow=xmb_shallow                         &
-               ,cugd_tten=cugd_tten,cugd_qvten=cugd_qvten       &
-               ,cugd_ttens=cugd_ttens,cugd_qvtens=cugd_qvtens   &
-               ,cugd_qcten=cugd_qcten,cugd_avedx=cugd_avedx     &
-               ,imomentum=imomentum,ishallow_g3=ishallow        &
                ,ichoice=clos_choice                             &
-               ,htop=htop,hbot=hbot                             &
-               ,CU_ACT_FLAG=CU_ACT_FLAG,warm_rain=warm_rain     &
+               ,ishallow_g3=ishallow                            &
                ,IDS=ids,IDE=ide,JDS=jds,JDE=jde,KDS=kds,KDE=kde &
                ,IMS=ims,IME=ime,JMS=jms,JME=jme,KMS=kms,KME=kme &
-!              ,IPS=ips,IPE=ipe,JPS=jps,JPE=jpe,KPS=kps,KPE=kpe &
                ,ITS=its,ITE=ite,JTS=jts,JTE=jte,KTS=kts,KTE=kte &
                ,PERIODIC_X=periodic_x,PERIODIC_Y=periodic_y     &
+               ,RQVCUTEN=RQVCUTEN,RQCCUTEN=RQCCUTEN             &
               ! optionals
 #if (NMM_CORE == 1 )
-               ,RTHCUTEN=RTHCUTEN ,RTHFTEN=forcet               &
-               ,RTHRATEN=RTHRATEN                               &
                ,RQICUTEN=RQICUTEN ,RQVFTEN=forceq               &
+               ,RTHFTEN=forcet, RTHCUTEN=RTHCUTEN               &
 #else
                ,RTHCUTEN=RTHCUTEN ,RTHFTEN=RTHFTEN              &
-               ,RTHRATEN=RTHRATEN                               &
                ,RQICUTEN=RQICUTEN ,RQVFTEN=RQVFTEN              &
-               ,rqvblten=rqvblten,rthblten=rthblten             &
 #endif
-               ,RQVCUTEN=RQVCUTEN,RQCCUTEN=RQCCUTEN             &
+               ,RTHRATEN=RTHRATEN                               &
+               ,RQVBLTEN=RQVBLTEN,RTHBLTEN=RTHBLTEN             &
                ,F_QV=f_qv,F_QC=f_qc,F_QR=f_qr                   &
                ,F_QI=f_qi,F_QS=f_qs                             &
 #if ( WRF_DFI_RADAR == 1 )

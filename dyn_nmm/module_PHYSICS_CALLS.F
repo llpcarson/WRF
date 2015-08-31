@@ -2178,6 +2178,7 @@
      &                 ,SM,HBM2,PBLH,LPBL,CNVBOT,CNVTOP                 &
      &                 ,HTOP,HBOT,HTOPD,HBOTD,HTOPS,HBOTS               &
      &                 ,RTHBLTEN,RQVBLTEN,RTHRATEN                      &
+     &                 ,cugd_tten,cugd_qvten,cugd_qcten,cugd_qiten      &
 #if (NMM_CORE==1)    
      &                 ,TWBS,QWBS                                       &
      &                 ,DUCUDT, DVCUDT, MOMMIX, store_rand               &                  
@@ -2305,6 +2306,10 @@
 !
       TYPE(GRID_CONFIG_REC_TYPE),INTENT(IN) :: CONFIG_FLAGS
 !
+!      REAL,DIMENSION(IMS:IME,KMS:KME,JMS:JME),                         &
+      REAL,DIMENSION(IMS:IME,KMS:KME,JMS:JME),OPTIONAL,                &
+           INTENT(INOUT) ::                                            &
+           cugd_tten,cugd_qvten,cugd_qcten,cugd_qiten
 !-----------------------------------------------------------------------
 !***  LOCAL VARIABLES
 !-----------------------------------------------------------------------
@@ -2403,6 +2408,8 @@
      &   CONFIG_FLAGS%CU_PHYSICS==SASSCHEME)RETURN
       IF(MOD(NTSD,NCNVC)/=0.AND.                                      &
      &   CONFIG_FLAGS%CU_PHYSICS==MESO_SAS)RETURN             !Kwon
+      IF(MOD(NTSD,NCNVC)/=0.AND.                                      &
+     &   CONFIG_FLAGS%CU_PHYSICS==GFSCHEME)RETURN             !egrell
       
 !-----------------------------------------------------------------------
       NSTEP_CNV=NCNVC
@@ -2673,6 +2680,8 @@
      &                 ,APR_CAPME=APR_CAPME,APR_CAPMI=APR_CAPMI         &
      &                 ,MASS_FLUX=MASS_FLUX,XF_ENS=XF_ENS               &
      &                 ,PR_ENS=PR_ENS                                   &
+     &                 ,clos_choice=config_flags%clos_choice            &
+     &                 ,ishallow=config_flags%ishallow                  &
      &                 ,GD_CLOUD=GD_CLOUD,GD_CLOUD2=GD_CLOUD2           &
      &                 ,KTOP_DEEP=KTOP_DEEP                             &
      &                 ,ENSDIM=ENSDIM,MAXIENS=1,MAXENS=3                &
@@ -2839,7 +2848,7 @@
 !
           cps_select: SELECT CASE(config_flags%cu_physics)
 !
-          CASE (KFSCHEME,KFETASCHEME,GDSCHEME,SASSCHEME,MESO_SAS,OSASSCHEME,NSASSCHEME,TIEDTKESCHEME)
+          CASE (KFSCHEME,KFETASCHEME,GDSCHEME,GFSCHEME,SASSCHEME,MESO_SAS,OSASSCHEME,NSASSCHEME,TIEDTKESCHEME)
             IF (ETAMP_Regional) THEN
               MOIST_TRANS(I,K,J,P_QS)=MAX(0.,MOIST_TRANS(I,K,J,P_QS)+RQICUTEN(I,K,J)*DTCNVC+RQSCUTEN(I,K,J)*DTCNVC)
             ELSE
@@ -2881,6 +2890,26 @@
       DEALLOCATE(MOIST_TRANS,STAT=ISTAT)
 !
 !-----------------------------------------------------------------------
+! diagnostics - egrell
+! save instantaneous tendencies from GF
+!      if (present(cugd_tten)) then
+      if (config_flags%cu_physics .eq. GFSCHEME) then
+!$omp parallel do
+!$omp& private(i,j,k)
+      DO K=KTS,KTE
+      DO J=MYJS2,MYJE2
+        IENDX=MYIE1
+        IF(MOD(J,2)==0.AND.ITE==IDE-1)IENDX=IENDX-1
+        DO I=MYIS1,IENDX
+          cugd_tten(i,k,j)=rthcuten(i,k,j)*PI_PHY(I,K,J)*86400.
+          cugd_qvten(i,k,j)=rqvcuten(i,k,j)*86400.*xlv/cp
+          cugd_qcten(i,k,j)=rqccuten(i,k,j)*86400.*xlv/cp
+          cugd_qiten(i,k,j)=rqicuten(i,k,j)*86400.*xlv/cp
+        ENDDO
+      ENDDO
+      ENDDO
+      endif
+
 !
       END SUBROUTINE CUCNVC
 !
