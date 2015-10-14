@@ -1324,16 +1324,16 @@
 
          IF (has_reqc.ne.0 .and. has_reqi.ne.0 .and. has_reqs.ne.0) THEN
           do k = kts, kte
-             re_qc1d(k) = 2.51E-6
-             re_qi1d(k) = 10.01E-6
-             re_qs1d(k) = 10.01E-6
+             re_qc1d(k) = 2.49E-6
+             re_qi1d(k) = 4.99E-6
+             re_qs1d(k) = 9.99E-6
           enddo
           call calc_effectRad (t1d, p1d, qv1d, qc1d, nc1d, qi1d, ni1d, qs1d,  &
                       re_qc1d, re_qi1d, re_qs1d, kts, kte)
           do k = kts, kte
-             re_cloud(i,k,j) = MAX( 2.51E-6, MIN(re_qc1d(k), 50.E-6))
-             re_ice(i,k,j)   = MAX(10.01E-6, MIN(re_qi1d(k), 125.E-6))
-             re_snow(i,k,j)  = MAX(10.01E-6, MIN(re_qs1d(k), 999.E-6))
+             re_cloud(i,k,j) = MAX(2.49E-6, MIN(re_qc1d(k), 50.E-6))
+             re_ice(i,k,j)   = MAX(4.99E-6, MIN(re_qi1d(k), 125.E-6))
+             re_snow(i,k,j)  = MAX(9.99E-6, MIN(re_qs1d(k), 999.E-6))
           enddo
          ENDIF
 
@@ -1640,9 +1640,9 @@
             lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
             ilami = 1./lami
             xDi = (bm_i + mu_i + 1.) * ilami
-            if (xDi.lt. 20.E-6) then
-             lami = cie(2)/20.E-6
-             ni(k) = MIN(499.D3, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
+            if (xDi.lt. 5.E-6) then
+             lami = cie(2)/5.E-6
+             ni(k) = MIN(99.D6, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
             elseif (xDi.gt. 300.E-6) then
              lami = cie(2)/300.E-6
              ni(k) = cig(1)*oig2*ri(k)/am_i*lami**bm_i
@@ -2422,14 +2422,14 @@
           endif
 
 !..A portion of rimed snow converts to graupel but some remains snow.
-!.. Interp from 5 to 75% as riming factor increases from 5.0 to 30.0
-!.. 0.028 came from (.75-.05)/(30.-5.).  This remains ad-hoc and should
+!.. Interp from 15 to 95% as riming factor increases from 2.0 to 30.0
+!.. 0.028 came from (.95-.15)/(30.-2.).  This remains ad-hoc and should
 !.. be revisited.
-          if (prs_scw(k).gt.5.0*prs_sde(k) .and. &
+          if (prs_scw(k).gt.2.0*prs_sde(k) .and. &
                          prs_sde(k).gt.eps) then
            r_frac = MIN(30.0D0, prs_scw(k)/prs_sde(k))
-           g_frac = MIN(0.75, 0.05 + (r_frac-5.)*.028)
-           vts_boost(k) = MIN(1.5, 1.1 + (r_frac-5.)*.016)
+           g_frac = MIN(0.95, 0.15 + (r_frac-2.)*.028)
+           vts_boost(k) = MIN(1.5, 1.1 + (r_frac-2.)*.016)
            prg_scw(k) = g_frac*prs_scw(k)
            prs_scw(k) = (1. - g_frac)*prs_scw(k)
           endif
@@ -2444,7 +2444,7 @@
            prr_sml(k) = prr_sml(k) + 4218.*olfus*tempc &
                                    * (prr_rcs(k)+prs_scw(k))
            prr_sml(k) = MIN(DBLE(rs(k)*odts), MAX(0.D0, prr_sml(k)))
-           pnr_sml(k) = smo0(k)/rs(k)*prr_sml(k) * 10.0**(-0.75*tempc)      ! RAIN2M
+           pnr_sml(k) = smo0(k)/rs(k)*prr_sml(k) * 10.0**(-0.5*tempc)       ! RAIN2M
            pnr_sml(k) = MIN(DBLE(smo0(k)*odts), pnr_sml(k))
            if (tempc.gt.3.5 .or. rs(k).lt.0.005E-3) pnr_sml(k)=0.0
 
@@ -2464,7 +2464,7 @@
 !-GT                               * (prr_rcg(k)+prg_gcw(k))
            prr_gml(k) = MIN(DBLE(rg(k)*odts), MAX(0.D0, prr_gml(k)))
            pnr_gml(k) = N0_g(k)*cgg(2)*ilamg(k)**cge(2) / rg(k)         &   ! RAIN2M
-                      * prr_gml(k) * 10.0**(-0.25*tempc)
+                      * prr_gml(k) * 10.0**(-0.5*tempc)
            if (tempc.gt.7.5 .or. rg(k).lt.0.005E-3) pnr_gml(k)=0.0
 
            if (ssati(k).lt. 0.) then
@@ -2665,16 +2665,16 @@
                       * orho
 
 !..Cloud ice mass/number balance; keep mass-wt mean size between
-!.. 20 and 300 microns.  Also no more than 250 xtals per liter.
+!.. 5 and 300 microns.  Also no more than 100 xtals per cc.
          xri=MAX(R1,(qi1d(k) + qiten(k)*dtsave)*rho(k))
          xni=MAX(R2,(ni1d(k) + niten(k)*dtsave)*rho(k))
          if (xri.gt. R1) then
            lami = (am_i*cig(2)*oig1*xni/xri)**obmi
            ilami = 1./lami
            xDi = (bm_i + mu_i + 1.) * ilami
-           if (xDi.lt. 20.E-6) then
-            lami = cie(2)/20.E-6
-            xni = MIN(499.D3, cig(1)*oig2*xri/am_i*lami**bm_i)
+           if (xDi.lt. 5.E-6) then
+            lami = cie(2)/5.E-6
+            xni = MIN(99.D6, cig(1)*oig2*xri/am_i*lami**bm_i)
             niten(k) = (xni-ni1d(k)*rho(k))*odts*orho
            elseif (xDi.gt. 300.E-6) then
             lami = cie(2)/300.E-6
@@ -2685,8 +2685,8 @@
           niten(k) = -ni1d(k)*odts
          endif
          xni=MAX(0.,(ni1d(k) + niten(k)*dtsave)*rho(k))
-         if (xni.gt.499.E3) &
-                niten(k) = (499.E3-ni1d(k)*rho(k))*odts*orho
+         if (xni.gt.99.E6) &
+                niten(k) = (99.E6-ni1d(k)*rho(k))*odts*orho
 
 !..Rain tendency
          qrten(k) = qrten(k) + (prr_wau(k) + prr_rcw(k) &
@@ -3256,7 +3256,8 @@
            t4_vts = Kap1*Mrat**mu_s*csg(7)*ils2**cse(7)
            vts = rhof(k)*av_s * (t1_vts+t2_vts)/(t3_vts+t4_vts)
            if (temp(k).gt. T_0) then
-            vtsk(k) = MAX(vts*vts_boost(k), vtrk(k))
+            vtsk(k) = MAX(vts*vts_boost(k),                             &
+     &                vts*((vtrk(k)-vts*vts_boost(k))/(temp(k)-T_0)))
            else
             vtsk(k) = vts*vts_boost(k)
            endif
@@ -3503,13 +3504,13 @@
            lami = (am_i*cig(2)*oig1*ni1d(k)/qi1d(k))**obmi
            ilami = 1./lami
            xDi = (bm_i + mu_i + 1.) * ilami
-           if (xDi.lt. 20.E-6) then
-            lami = cie(2)/20.E-6
+           if (xDi.lt. 5.E-6) then
+            lami = cie(2)/5.E-6
            elseif (xDi.gt. 300.E-6) then
             lami = cie(2)/300.E-6
            endif
            ni1d(k) = MIN(cig(1)*oig2*qi1d(k)/am_i*lami**bm_i,           &
-                         499.D3/rho(k))
+                         99.D6/rho(k))
          endif
          qr1d(k) = qr1d(k) + qrten(k)*DT
          nr1d(k) = MAX(R2/rho(k), nr1d(k) + nrten(k)*DT)
@@ -5010,7 +5011,7 @@
             inu_c = MIN(15, NINT(1000.E6/nc(k)) + 2)
          endif
          lamc = (nc(k)*am_r*g_ratio(inu_c)/rc(k))**obmr
-         re_qc1d(k) = MAX(2.51E-6, MIN(SNGL(0.5D0 * DBLE(3.+inu_c)/lamc), 50.E-6))
+         re_qc1d(k) = MAX(2.49E-6, MIN(SNGL(0.5D0 * DBLE(3.+inu_c)/lamc), 50.E-6))
       enddo
       endif
 
@@ -5018,7 +5019,7 @@
       do k = kts, kte
          if (ri(k).le.R1 .or. ni(k).le.R2) CYCLE
          lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
-         re_qi1d(k) = MAX(10.01E-6, MIN(SNGL(0.5D0 * DBLE(3.+mu_i)/lami), 125.E-6))
+         re_qi1d(k) = MAX(4.99E-6, MIN(SNGL(0.5D0 * DBLE(3.+mu_i)/lami), 125.E-6))
       enddo
       endif
 
@@ -5058,7 +5059,7 @@
      &        + sb(7)*tc0*tc0*cse(1) + sb(8)*tc0*cse(1)*cse(1) &
      &        + sb(9)*tc0*tc0*tc0 + sb(10)*cse(1)*cse(1)*cse(1)
          smoc = a_ * smo2**b_
-         re_qs1d(k) = MAX(10.E-6, MIN(0.5*(smoc/smob), 999.E-6))
+         re_qs1d(k) = MAX(9.99E-6, MIN(0.5*(smoc/smob), 999.E-6))
       enddo
       endif
 
