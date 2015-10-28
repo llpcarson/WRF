@@ -804,7 +804,12 @@ integer myproc
    CALL nl_get_iswater(id,iswater)
    CALL nl_get_isice(id,isice)
    CALL nl_get_isurban(id,isurban)
-   CALL nl_get_mminlu( 1, mminlu_loc )
+!jm   CALL nl_get_mminlu( 1, mminlu_loc )
+   CALL nl_get_mminlu( id, mminlu_loc )
+IF ( trim(mminlu_loc) .eq. "" ) THEN
+  CALL wrf_message('WARNING:   MMINLU NOT SET, USING USGS')
+  MMINLU_LOC = 'USGS'
+ENDIF
    CALL wrf_debug(100,'after nl_get_iswater, nl_get_isice, nl_get_mminlu_loc')
 !-- temporary fix by ww
    landuse_ISICE = isice
@@ -974,7 +979,7 @@ integer myproc
    IF(mminlu_loc .ne. '    ')THEN
 !-- initialize surface properties
 
-     CALL landuse_init(lu_index, snowc, albedo, albbck, snoalb, mavail, emiss, embck, &
+     CALL landuse_init(id,lu_index, snowc, albedo, albbck, snoalb, mavail, emiss, embck, &
                 znt, Z0, thc, xland, xice, xicem, julday, cen_lat, iswater, &
                 TRIM ( mminlu_loc ) ,                               &
                 landuse_ISICE, landuse_LUCATS,                      &
@@ -1060,7 +1065,7 @@ integer myproc
                 its=its, ite=ite, jts=jts, jte=jte, kts=kts, kte=kte                    )
 
    CALL wrf_debug ( 200 , 'module_start: phy_init: Before call to bl_init' )
-   CALL bl_init(STEPBL,BLDT,DT,RUBLTEN,RVBLTEN,RTHBLTEN,        &
+   CALL bl_init(id,STEPBL,BLDT,DT,RUBLTEN,RVBLTEN,RTHBLTEN,        &
                 RQVBLTEN,RQCBLTEN,RQIBLTEN,TSK,TMN,             &
                 config_flags,restart,UST,LOWLYR,TSLB,ZS,DZS,    &
                 num_soil_layers,TKE_PBL,mfshconv,               &
@@ -1329,7 +1334,7 @@ integer myproc
    END SUBROUTINE phy_init
 
 !=====================================================================
-   SUBROUTINE landuse_init(lu_index, snowc, albedo, albbck, snoalb, mavail, emiss, embck, &
+   SUBROUTINE landuse_init(id,lu_index, snowc, albedo, albbck, snoalb, mavail, emiss, embck, &
                 znt,Z0,thc,xland, xice, xicem, julday, cen_lat, iswater, mminlu,  &
                 ISICE, LUCATS, LUSEAS, ISN,                         &
                 fractional_seaice,                                  &
@@ -1340,9 +1345,11 @@ integer myproc
                 its, ite, jts, jte, kts, kte                       )
 
    USE module_wrf_error
+USE module_dm, ONLY : local_communicator
    IMPLICIT NONE
 
 !---------------------------------------------------------------------
+   INTEGER , INTENT(IN)           :: id
    INTEGER , INTENT(IN)           :: ids, ide, jds, jde, kds, kde,   &
                                      ims, ime, jms, jme, kms, kme,   &
                                      its, ite, jts, jte, kts, kte
@@ -1421,6 +1428,7 @@ integer myproc
           'module_physics_init.F: LANDUSE_INIT: open failure for LANDUSE.TBL'
           CALL wrf_error_fatal ( message )
         END IF
+        REWIND(landuse_unit)
       ENDIF
 
 ! Read info from file LANDUSE.TBL
@@ -1458,6 +1466,7 @@ integer myproc
       ENDIF
       CALL wrf_dm_bcast_bytes (end_of_file, LWORDSIZE )
       IF ( .NOT. end_of_file ) THEN
+        CALL wrf_dm_bcast_bytes (lucats,  IWORDSIZE )
         CALL wrf_dm_bcast_string(lutype, 256)
         CALL wrf_dm_bcast_bytes (lucats,  IWORDSIZE )
         CALL wrf_dm_bcast_bytes (luseas,  IWORDSIZE )
@@ -1592,6 +1601,7 @@ integer myproc
         lu_state(curs) = THERIN(cats,seas)        ; curs = curs + 1
       ENDDO
     ENDDO
+   CALL wrf_debug( 100 , 'end of landuse_init' )
 !
 !-- fds (07/2010)
 !-- SSIB's 12-category vegetation parameters are defined in module_ssib_veg
@@ -1754,9 +1764,13 @@ integer myproc
 !   note that CAM option will still do the same. 
 !   n_ozmixm: no of months; levsiz: = 59, vertical dim
 !   Read in CAM ozone data, and interpolate data to model grid
-!   Interpolation is done on domain 1 only
+!   Interpolation of aerosols is done on domain 1 only
 
+#if (EM_CORE==1) 
    IF ( config_flags%o3input .EQ. 2 .AND. id .EQ. 1 ) THEN
+#else
+   IF ( config_flags%o3input .EQ. 2 ) THEN
+#endif
       CALL oznini(ozmixm,pin,levsiz,n_ozmixm,XLAT,                &
                      ids, ide, jds, jde, kds, kde,                  &
                      ims, ime, jms, jme, kms, kme,                  &
@@ -1964,7 +1978,7 @@ integer myproc
 
    END SUBROUTINE ra_init
 
-   SUBROUTINE bl_init(STEPBL,BLDT,DT,RUBLTEN,RVBLTEN,RTHBLTEN,  &
+   SUBROUTINE bl_init(id,STEPBL,BLDT,DT,RUBLTEN,RVBLTEN,RTHBLTEN,  &
                 RQVBLTEN,RQCBLTEN,RQIBLTEN,TSK,TMN,             &
                 config_flags,restart,UST,LOWLYR,TSLB,ZS,DZS,    &
                 num_soil_layers,TKE_PBL,mfshconv,               &
@@ -2142,6 +2156,7 @@ integer myproc
 !--------------------------------------------------------------------
    IMPLICIT NONE
 !--------------------------------------------------------------------
+integer,intent(in) :: id
    TYPE (grid_config_rec_type) ::     config_flags
    LOGICAL , INTENT(IN)        :: restart
    LOGICAL, INTENT(IN)         ::   FNDSOILW, FNDSNOWH
@@ -2644,7 +2659,7 @@ integer myproc
 
 #endif
       CASE (LSMSCHEME)
-          CALL LSMINIT(VEGFRA,SNOW,SNOWC,SNOWH,CANWAT,SMSTAV,  &
+          CALL LSMINIT(id,VEGFRA,SNOW,SNOWC,SNOWH,CANWAT,SMSTAV,  &
                      SMSTOT, SFCRUNOFF,UDRUNOFF,ACSNOW,        &
                      ACSNOM,IVGTYP,ISLTYP,TSLB,SMOIS,SH2O,ZS,DZS, &
                      MMINLU,                                   &
@@ -2778,7 +2793,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
              config_flags%num_land_cat .ne. 24 .and. config_flags%num_land_cat .ne. 28 .and. & ! USGS
              config_flags%num_land_cat .ne. 40 .and. config_flags%num_land_cat .ne. 50 )     & ! NLCD
           CALL wrf_error_fatal ( 'module_physics_init: PX LSM option requires USGS, MODIS, or NLCD' )
-          CALL LSMINIT(VEGFRA,SNOW,SNOWC,SNOWH,CANWAT,SMSTAV,  &
+          CALL LSMINIT(id,VEGFRA,SNOW,SNOWC,SNOWH,CANWAT,SMSTAV,  &
                      SMSTOT, SFCRUNOFF,UDRUNOFF,ACSNOW,        &
                      ACSNOM,IVGTYP,ISLTYP,TSLB,SMOIS,SH2O,ZS,DZS, &
                      MMINLU,                                   &
@@ -2906,7 +2921,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
 
       CASE (YSUSCHEME)
            if(isfc .ne. 1)CALL wrf_error_fatal &
-            ( 'module_physics_init: use sfclay scheme for this pbl option' )
+            ( 'module_physics_init: Use sf_sfclay_physics= 1 or 91 for this pbl option' )
            IF ((SF_URBAN_PHYSICS.eq.2).OR.(SF_URBAN_PHYSICS.EQ.3)) CALL wrf_error_fatal &
             ( 'module_physics_init: use myj (option 2) or boulac (option 8) with BEP/BEM urban scheme' )
            CALL ysuinit(RUBLTEN,RVBLTEN,RTHBLTEN,RQVBLTEN,    &
@@ -2919,7 +2934,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
                         its, ite, jts, jte, kts, kte          )
       CASE (SHINHONGSCHEME)
            if(isfc .ne. 1)CALL wrf_error_fatal &
-            ( 'module_physics_init: use sfclay scheme for this pbl option' )
+            ( 'module_physics_init: Use sf_sfclay_physics= 1 or 91 for this pbl option' )
            IF ((SF_URBAN_PHYSICS.eq.2).OR.(SF_URBAN_PHYSICS.EQ.3)) CALL wrf_error_fatal &
             ( 'module_physics_init: use myj (option 2) or boulac (option 8) with BEP/BEM urban scheme' )
            CALL shinhonginit(RUBLTEN,RVBLTEN,RTHBLTEN,RQVBLTEN,&
@@ -2932,7 +2947,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
                         its, ite, jts, jte, kts, kte          )
       CASE (MRFSCHEME)
            if(isfc .ne. 1)CALL wrf_error_fatal &
-            ( 'module_physics_init: use sfclay scheme for this pbl option' )
+            ( 'module_physics_init: Use sf_sfclay_physics= 1 or 91 for this pbl option' )
            IF ((SF_URBAN_PHYSICS.eq.2).OR.(SF_URBAN_PHYSICS.EQ.3)) CALL wrf_error_fatal &
             ( 'module_physics_init: use myj (option 2) or boulac (option 8) with BEP/BEM urban scheme' )
            CALL mrfinit(RUBLTEN,RVBLTEN,RTHBLTEN,RQVBLTEN,    &
@@ -3103,7 +3118,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
 
       CASE (GBMPBLSCHEME) 
            if(isfc .ne. 1)CALL wrf_error_fatal &
-            ( 'module_physics_init: use sfclay scheme for this pbl option' )
+            ( 'module_physics_init: Use sf_sfclay_physics= 1 or 91 for this pbl option' )
          CALL gbmpblinit(RUBLTEN,RVBLTEN,RTHBLTEN,RQVBLTEN,   &
                         RQCBLTEN,RQIBLTEN,P_QI,               &
                         PARAM_FIRST_SCALAR,TKE_PBL,           &
@@ -3519,6 +3534,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
    USE module_mp_wsm5
    USE module_mp_wsm6
    USE module_mp_etanew
+   USE module_mp_fer_hires
 #if (NMM_CORE == 1)
    USE module_mp_HWRF
 #endif
@@ -3618,6 +3634,13 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
                           ids, ide, jds, jde, kds, kde,           &
                           ims, ime, jms, jme, kms, kme,           &
                           its, ite, jts, jte, kts, kte            )
+     CASE (FER_MP_HIRES,FER_MP_HIRES_ADVECT)
+               CALL fer_hires_init (MPDT,DT,DX,DY,LOWLYR,restart,         &
+                            allowed_to_read,                        &
+                            ids, ide, jds, jde, kds, kde,           &
+                            ims, ime, jms, jme, kms, kme,           &
+                            its, ite, jts, jte, kts, kte,           &
+                            F_ICE_PHY,F_RAIN_PHY,F_RIMEF_PHY)
 #if(NMM_CORE==1)
      CASE (etamp_HWRF)
          CALL etanewinit_HWRF (MPDT,DT,DX,DY,LOWLYR,restart,           &

@@ -298,6 +298,7 @@ SUBROUTINE solve_em ( grid , config_flags  &
    endif
 
    grid%itimestep = grid%itimestep + 1
+   grid%dtbc = grid%dtbc + grid%dt
 
    IF( coupler_on ) CALL cpl_store_input( grid, config_flags )
 
@@ -3700,7 +3701,8 @@ BENCH_END(micro_driver_tim)
 #if 0
 BENCH_START(microswap_2)
 ! for load balancing; communication to redistribute the points
-     IF ( config_flags%mp_physics .EQ. ETAMPNEW ) THEN
+      IF ( config_flags%mp_physics .EQ. ETAMPNEW .OR. &
+     &     config_flags%mp_physics .EQ. FER_MP_HIRES) THEN
 #include "SWAP_ETAMP_NEW.inc"
      ELSE IF ( config_flags%mp_physics .EQ. WSM3SCHEME ) THEN
 #include "SWAP_WSM3.inc"
@@ -4410,7 +4412,6 @@ BENCH_END(bc_2d_tim)
    END DO tile_bc_loop_3
    !$OMP END PARALLEL DO
 
-     grid%dtbc = grid%dtbc + grid%dt
    ENDIF
 
 ! reset surface w for consistency

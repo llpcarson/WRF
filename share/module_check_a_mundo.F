@@ -56,7 +56,7 @@
    model_config_rec % wrf_hydro = 0
 #endif
 
-#if (defined MOVE_NESTS) && (defined VORTEX_CENTER)
+#if (defined MOVE_NESTS) && (defined VORTEX_CENTER) && (EM_CORE==1)
 !-----------------------------------------------------------------------
 ! A known problem with moving nests.  Users with number of eta levels 
 ! above 55 get a model crash.
@@ -67,6 +67,22 @@
          wrf_err_message = '--- ERROR: Known problem.  Moving nests need e_vert .LE. 55'
          CALL wrf_error_fatal ( TRIM( wrf_err_message ) )
       END IF
+#endif
+
+#if (NMM_CORE == 1) && (NMM_NEST == 1)
+!-----------------------------------------------------------------------
+! Ensure that minimum NMM corral distances are supplied for all domains.
+!-----------------------------------------------------------------------
+   do i=1,model_config_rec%max_dom
+      if(model_config_rec%corral_x(i)<5) then
+         call wrf_message("Corral X distance must be at least 5 due to intermediate domain halos.")
+         model_config_rec%corral_x(i)=5
+      endif
+      if(model_config_rec%corral_y(i)<5) then
+         call wrf_message("Corral Y distance must be at least 5 due to intermediate domain halos.")
+         model_config_rec%corral_y(i)=5
+      endif
+    enddo
 #endif
 
 #if (EM_CORE == 1)
@@ -96,6 +112,8 @@
          wrf_err_message = '--- ERROR: Either turn off use_theta_m, or turn off the rad_nudge option'
          CALL wrf_error_fatal ( TRIM(wrf_err_message) )
       END IF
+
+
 
 
 !-----------------------------------------------------------------------
@@ -158,22 +176,6 @@
          END IF
       ENDDO
 #endif
-
-!-----------------------------------------------------------------------
-! Check: if ETAMPNEW microphysics is selected, this has moved to option 95
-!-----------------------------------------------------------------------
-      DO i = 1, model_config_rec % max_dom
-         IF ( model_config_rec % mp_physics(i) == etamp_hr ) THEN
-            wrf_err_message = '--- RESET: ETAMPNEW scheme is now mp_physics=95'
-            CALL wrf_message ( wrf_err_message )
-            model_config_rec % mp_physics(i) = etampnew
-         END IF
-         IF ( model_config_rec % mp_physics_dfi(i) == etamp_hr_dfi ) THEN
-            wrf_err_message = '--- RESET: ETAMPNEW_DFI scheme is now mp_physics_dfi=95'
-            CALL wrf_message ( wrf_err_message )
-            model_config_rec % mp_physics_dfi(i) = etampnew_dfi
-         END IF
-      ENDDO
 
 !-----------------------------------------------------------------------
 ! Check that all values of sf_surface_physics are the same for all domains
@@ -244,6 +246,18 @@
          END IF
       ENDDO
 
+
+!------------------------------------------------------------------------------
+! Check that a value for time_step is given, and is not just set to default (-1)
+!------------------------------------------------------------------------------
+
+         IF ( ( model_config_rec % use_wps_input == 0 ) .AND. &
+              ( model_config_rec % time_step .EQ. -1 ) ) THEN
+
+            wrf_err_message = '--- ERROR: Known problem.  time_step must be set to a positive integer'
+                CALL wrf_error_fatal ( TRIM( wrf_err_message ) )
+
+         END IF
 
 !-----------------------------------------------------------------------
 ! Check that all values of bl_pbl_physics are the same for all domains
@@ -827,6 +841,37 @@
          END DO
       END IF
 
+
+!-----------------------------------------------------------------------
+! If we have asked for the height-level diagnostics, make sure we can output them
+!-----------------------------------------------------------------------
+
+      IF ( model_config_rec%z_lev_diags .EQ. 1 ) THEN
+         DO i = 1, model_config_rec % max_dom
+            IF ( ( MAX ( model_config_rec%auxhist22_interval  (i) , &
+                         model_config_rec%auxhist22_interval_d(i) , &
+                         model_config_rec%auxhist22_interval_h(i) , &
+                         model_config_rec%auxhist22_interval_m(i) , &
+                         model_config_rec%auxhist22_interval_s(i) ) == 0 ) .OR. &
+                 (  model_config_rec%io_form_auxhist22 == 0 ) ) THEN
+               wrf_err_message = '--- ERROR: z_lev_diags requires auxhist22 file information'
+               CALL wrf_message ( wrf_err_message )
+               wrf_err_message = '--- ERROR: provide: auxhist22_interval (max_dom) and io_form_auxhist22'
+               CALL wrf_message ( wrf_err_message )
+               wrf_err_message = '--- Add supporting IO for stream 22 for height-level diags'
+               CALL wrf_error_fatal ( TRIM( wrf_err_message ) )
+            END IF
+         END DO
+         DO i = 1, model_config_rec % max_dom
+            model_config_rec%z_lev_interval(i) = model_config_rec%auxhist22_interval  (i)*   60 + &
+                                                 model_config_rec%auxhist22_interval_d(i)*86400 + &
+                                                 model_config_rec%auxhist22_interval_h(i)* 3600 + &
+                                                 model_config_rec%auxhist22_interval_m(i)*   60 + &
+                                                 model_config_rec%auxhist22_interval_s(i)
+         END DO
+      END IF
+
+
 !-----------------------------------------------------------------------
 ! For nwp_diagnostics = 1, history_interval must be used.           
 !-----------------------------------------------------------------------
@@ -1103,6 +1148,45 @@
       END DO
 
 !-----------------------------------------------------------------------
+!  Remapping namelist variables for gridded and surface fdda to aux streams 9 and 10.
+!  Relocated here so that the remappings are after checking the namelist for inconsistencies.
+!-----------------------------------------------------------------------
+
+#     include "../dyn_em/namelist_remappings_em.h"
+
+#endif
+
+#if (EM_CORE == 1)
+!-----------------------------------------------------------------------
+!  For the real program (ARW only), check that the vertical interpolation options
+!  selected by the user are consistent.
+!  1. If the user has turned-off using the surface level, do not allow the force
+!     option to select how many layers the surface is to be used through.
+!  2. If the user has turned-off using the surface level, do not allow the 
+!     lowest level from surface option to be activated.
+!-----------------------------------------------------------------------
+
+      IF ( model_config_rec % use_wps_input .EQ. 1 ) THEN
+         IF ( ( .NOT. model_config_rec % use_surface )  .AND. &
+              ( model_config_rec % force_sfc_in_vinterp .GT. 0 ) ) THEN
+            wrf_err_message = '--- NOTE: Inconsistent vertical interpolation settings in program real.'
+            CALL wrf_message ( wrf_err_message )
+            wrf_err_message = '--- NOTE: With use_surface=F, automatically setting force_sfc_in_vinterp=0.'
+            CALL wrf_message ( wrf_err_message )
+            model_config_rec % force_sfc_in_vinterp = 0
+         END IF
+         IF ( ( .NOT. model_config_rec % use_surface )  .AND. &
+              ( model_config_rec % lowest_lev_from_sfc ) ) THEN
+            wrf_err_message = '--- NOTE: Inconsistent vertical interpolation settings in program real.'
+            CALL wrf_message ( wrf_err_message )
+            wrf_err_message = '--- NOTE: With use_surface=F, automatically setting lowest_lev_from_sfc=F.'
+            CALL wrf_message ( wrf_err_message )
+            model_config_rec % lowest_lev_from_sfc = .FALSE.
+         END IF
+      END IF
+#endif
+
+!-----------------------------------------------------------------------
 !  Set the namelist parameter o3input to 0 for the radiation schemes other
 !  than RRTMG_LWSCHEME and RRTMG_SWSCHEME.
 !-----------------------------------------------------------------------
@@ -1121,14 +1205,7 @@
          CALL wrf_message ( wrf_err_message )
       END IF
 
-!-----------------------------------------------------------------------
-!  Remapping namelist variables for gridded and surface fdda to aux streams 9 and 10.
-!  Relocated here so that the remappings are after checking the namelist for inconsistencies.
-!-----------------------------------------------------------------------
 
-#     include "../dyn_em/namelist_remappings_em.h"
-
-#endif
 
    END SUBROUTINE 
 
@@ -1283,6 +1360,7 @@
       CALL wrf_message ( wrf_err_message )
 
    END SUBROUTINE set_physics_rconfigs
+
 
 !=======================================================================
 

@@ -1,3 +1,4 @@
+#define HRD_MULTIPLE_STORMS
 !-----------------------------------------------------------------------
 !
 !NCEP_MESO:MEDIATION_LAYER:SOLVER
@@ -103,6 +104,7 @@
 !zhang's doing
       INTEGER,SAVE :: NTSD_restart1,NTSD_restart2,NTSD_restart3
 #endif
+      LOGICAL :: multi_storm
 #endif
 #ifdef NMM_FIND_LOAD_IMBALANCE
       integer, save :: cpu
@@ -113,7 +115,7 @@
 !     INTEGER :: MPI_COMM_COMP,MYPE,MYPROC,NPES
       INTEGER :: MYPROC,imid,jmid
       INTEGER :: KVH,NTSD_rad,RC
-      INTEGER :: NUM_OZMIXM,NUM_AEROSOLC
+      INTEGER :: NUM_AEROSOLC
 !
       REAL :: DT_INV,FICE,FRAIN,GPS,QI,QR,QW,WC,WP
 !
@@ -228,6 +230,7 @@
 !-----------------------------------------------------------------------
 !
       ttim=now_time() ! used to calculate total time spent in solver
+
       CALL DOMAIN_CLOCK_GET(GRID,ADVANCEcOUNT=NTSD_current)
 !
       IF(NTSD_current==0)THEN
@@ -299,8 +302,8 @@
 !-----------------------------------------------------------------------
 !
 !!!!! IF(WRF_DM_ON_MONITOR() )THEN
-        WRITE(MESSAGE,125)grid%ntsd,grid%ntsd*GRID%DT/3600.
-  125   FORMAT(' SOLVE_NMM: TIMESTEP IS ',I5,'   TIME IS ',F7.3,' HOURS')
+        WRITE(MESSAGE,125)grid%id,grid%ntsd,grid%ntsd*GRID%DT/3600.
+  125   FORMAT(' SOLVE_NMM: ',I3,' TIMESTEP IS ',I5,'   TIME IS ',F7.3,' HOURS')
         CALL WRF_MESSAGE(TRIM(MESSAGE))
 !!!!  ENDIF
 !
@@ -339,7 +342,7 @@
       ETAMP_PHYSICS=.FALSE.
 !
       IF (CONFIG_FLAGS%MP_PHYSICS == ETAMPNEW .OR.                 &
-     &    CONFIG_FLAGS%MP_PHYSICS == ETAMP_HR .OR.                 &
+     &    CONFIG_FLAGS%MP_PHYSICS == FER_MP_HIRES .OR.                 &
      &    CONFIG_FLAGS%MP_PHYSICS == ETAMP_HWRF ) THEN
 !
          ETAMP_PHYSICS=.TRUE.
@@ -709,16 +712,16 @@
 !
 !-----------------------------------------------------------------------
 !
-#ifdef DM_PARALLEL
-#    include "HALO_NMM_A.inc"
-#endif
+!!#ifdef DM_PARALLEL
+!!#    include "HALO_NMM_A.inc"
+!!#endif
 !
 !-----------------------------------------------------------------------
-#ifdef DM_PARALLEL
-      IF (.NOT.ETAMP_PHYSICS) THEN
-#    include "HALO_NMM_A_3.inc"
-      ENDIF
-#endif
+!!#ifdef DM_PARALLEL
+!!      IF (.NOT.ETAMP_PHYSICS) THEN
+!!#    include "HALO_NMM_A_3.inc"
+!!      ENDIF
+!!#endif
 !-----------------------------------------------------------------------
 !***  FIRST STEP INITIALIZATION OF PASSIVE SUBSTANCE VARIABLES
 !-----------------------------------------------------------------------
@@ -783,22 +786,24 @@
 !-----------------------------------------------------------------------
 !-----------------------------------------------------------------------
 #ifdef HWRF
-#ifdef HRD_MULTIPLE_STORMS
-      write(message,*)' No Ocean Coupling Run'
-      call wrf_message(trim(message))
-#else
+      CALL nl_get_multi_storm(1,multi_storm)
+      IF ( .NOT. multi_storm ) THEN
+        write(message,*)' No Ocean Coupling Run'
+        call wrf_debug(1,trim(message))
 ! Coupling insertion:->
-      btimx=now_time()
-      call ATM_TSTEP_INIT(NTSD_current,grid%NPHS,GRID%ID,grid%NPHS*grid%dt, &
-      ids,idf,jds,jdf,its,ite,jts,jte,ims,ime,jms,jme,           &
-                       kds,kde,kts,kte,kms,kme,                  &
-                       grid%HLON,grid%HLAT,grid%VLON,grid%VLAT,grid%sm,                   &
-                       grid%i_parent_start,grid%j_parent_start,  &
-                       grid%guessdtc,grid%dtc)
-      sst_tim=sst_tim+now_time()-btimx
+      ELSE
+        btimx=now_time()
+        call ATM_TSTEP_INIT(NTSD_current,grid%NPHS,GRID%ID,grid%NPHS*grid%dt, &
+        ids,idf,jds,jdf,its,ite,jts,jte,ims,ime,jms,jme,           &
+                         kds,kde,kts,kte,kms,kme,                  &
+                         grid%HLON,grid%HLAT,grid%VLON,grid%VLAT,grid%sm,                   &
+                         grid%i_parent_start,grid%j_parent_start,  &
+                         grid%guessdtc,grid%dtc)
+        sst_tim=sst_tim+now_time()-btimx
+      ENDIF
 !<-:coupling insertion
 !
-#endif
+
 #endif
 !-----------------------------------------------------------------------
 !***  PRESSURE TENDENCY, SIGMA DOT, VERTICAL PART OF OMEGA-ALPHA
@@ -808,10 +813,11 @@
       call blockf(loadimbal_tim,'after atm_tstep_init')
 #endif
       btimx=now_time()
+!zhang try2
 !-----------------
-#ifdef DM_PARALLEL
-#    include "HALO_NMM_D.inc"
-#endif
+!!#ifdef DM_PARALLEL
+!!#    include "HALO_NMM_D.inc"
+!!#endif
 !-----------------
       exch_tim=exch_tim+now_time()-btimx
 #ifdef NMM_FIND_LOAD_IMBALANCE
@@ -909,9 +915,9 @@
       call blockf(loadimbal_tim,'after adve')
 #endif
           btimx=now_time()
-#ifdef DM_PARALLEL
-#    include "HALO_NMM_I.inc"
-#endif
+!!#ifdef DM_PARALLEL
+!!#    include "HALO_NMM_I.inc"
+!!#endif
           exch_tim=exch_tim+now_time()-btimx
 #ifdef NMM_FIND_LOAD_IMBALANCE
       call blockf(loadimbal_tim,'after halo I')
@@ -1048,44 +1054,7 @@
 !***  CONFIGURATIONS WHERE IT MAY BE USED OUTSIDE OF THE PHYSICS.
 !
         IF(.NOT.OPERATIONAL_PHYSICS)THEN
-          DO K=KTS,KTE
-            DO J=MYJS,MYJE
-              DO I=MYIS,MYIE
-                MOIST(I,J,K,P_QV)=grid%q(I,J,K)/(1.-grid%q(I,J,K))
-                WC = grid%cwm(I,J,K)
-                QI = 0.
-                QR = 0.
-                QW = 0.
-                FICE=grid%f_ice(I,K,J)
-                FRAIN=grid%f_rain(I,K,J)
-!
-                IF(FICE>=1.)THEN
-                  QI=WC
-                ELSEIF(FICE<=0.)THEN
-                  QW=WC
-                ELSE
-                  QI=FICE*WC
-                  QW=WC-QI
-                ENDIF
-!
-                IF(QW>0..AND.FRAIN>0.)THEN
-                  IF(FRAIN>=1.)THEN
-                    QR=QW
-                    QW=0.
-                  ELSE
-                    QR=FRAIN*QW
-                    QW=QW-QR
-                  ENDIF
-                ENDIF
-!
-                MOIST(I,J,K,P_QC)=QW
-                MOIST(I,J,K,P_QR)=QR
-                MOIST(I,J,K,P_QI)=0.
-                MOIST(I,J,K,P_QS)=QI
-                MOIST(I,J,K,P_QG)=0.
-              ENDDO
-            ENDDO
-          ENDDO
+           call ETAMP_TO_MOIST()
         ENDIF
 !
         had2_tim=had2_tim+now_time()-btimx
@@ -1377,52 +1346,7 @@
 !***  CONFIGURATIONS WHERE IT MAY BE USED OUTSIDE OF THE PHYSICS.
 !
           IF(.NOT.OPERATIONAL_PHYSICS)THEN
-            DO K=KTS,KTE
-            DO J=MYJS,MYJE
-            DO I=MYIS,MYIE
-              MOIST(I,J,K,P_QV)=grid%q(I,J,K)/(1.-grid%q(I,J,K))
-              WC = grid%cwm(I,J,K)
-              QI = 0.
-              QR = 0.
-              QW = 0.
-              FICE=grid%f_ice(I,K,J)
-              FRAIN=grid%f_rain(I,K,J)
-!
-              IF(FICE>=1.)THEN
-                QI=WC
-              ELSEIF(FICE<=0.)THEN
-                QW=WC
-              ELSE
-                QI=FICE*WC
-                QW=WC-QI
-              ENDIF
-!
-              IF(QW>0..AND.FRAIN>0.)THEN
-                IF(FRAIN>=1.)THEN
-                  QR=QW
-                  QW=0.
-                ELSE
-                  QR=FRAIN*QW
-                  QW=QW-QR
-                ENDIF
-              ENDIF
-!
-              MOIST(I,J,K,P_QC)=QW
-              MOIST(I,J,K,P_QR)=QR
-
-              IF (ETAMP_PHYSICS) THEN
-#ifdef HWRF
-                 MOIST(I,J,K,P_QI)=QI
-                 MOIST(I,J,K,P_QS)=0.
-#else
-                 MOIST(I,J,K,P_QI)=0.
-                 MOIST(I,J,K,P_QS)=QI
-#endif
-              endif
-              MOIST(I,J,K,P_QG)=0.
-            ENDDO
-            ENDDO
-            ENDDO
+             call ETAMP_TO_MOIST()
           ENDIF
 !
 !-----------------------------------------------------------------------
@@ -1507,7 +1431,6 @@
 !***  When allocating CAM radiation 4d arrays (ozmixm, aerosolc), 
 !***  the following two scalars are not needed.
 !
-      NUM_OZMIXM=1
       NUM_AEROSOLC=1
 !
       IF(grid%ntsd<=0)THEN
@@ -1556,7 +1479,9 @@
      &                ,grid%cfracl,grid%cfracm,grid%cfrach,grid%sigt4                      &
      &                ,grid%acfrst,grid%ncfrst,grid%acfrcv,grid%ncfrcv                     &
      &                ,grid%cuppt,grid%vegfrc,grid%sno,grid%htop,grid%hbot                      &
-     &                ,grid%z,grid%sice,NUM_AEROSOLC,NUM_OZMIXM                  &
+     &                ,grid%z,grid%sice,NUM_AEROSOLC,NUM_OZMIXM        &
+     &                ,OZMIXM,grid%PIN,grid%LEVSIZ                     &
+
      &                ,GRID,CONFIG_FLAGS                               &
      &                ,RTHRATEN                                        &  
      &                ,grid%re_cloud,grid%re_ice,grid%re_snow          &  ! G. Thompson
@@ -1632,16 +1557,17 @@
 !-------------------------------------------------------------------------------------
 !*** GET SSTs FROM DMITRY's COUPLER ON TO THE PARENT AND NESTED GRID
 !-------------------------------------------------------------------------------------
-#ifdef HRD_MULTIPLE_STORMS
-      write(message,*)' No Ocean Coupling Run'
-      call wrf_message(trim(message))
-#else
+      CALL nl_get_multi_storm(1,multi_storm)
+      IF ( .NOT. multi_storm ) THEN
+        write(message,*)' No Ocean Coupling Run'
+        call wrf_debug(1,trim(message))
+      ELSE
 ! Coupling insertion:->
         btimx=now_time()
         CALL ATM_GETSST(grid%sst,grid%sm)
         sst_tim=sst_tim+now_time()-btimx
 !<-:Coupling insertion
-#endif
+      ENDIF
 #endif
 !----------------------------------------------------------------------
 !***  TURBULENT PROCESSES 
@@ -1708,6 +1634,7 @@
      &            ,GRID%DISHEAT,GRID%DKU3D,GRID%DKT3D                          &
      &            ,GRID%HPBL2D, GRID%EVAP2D, GRID%HEAT2D,GRID%RC2D               &  !S&P Kwon
      &            ,GRID%SFCHEADRT,GRID%INFXSRT,GRID%SOLDRAIN           &  !Hydrology, no-op right now
+     &            ,grid%cd_out,grid%ch_out                             &
      &            ,IDS,IDF,JDS,JDF,KDS,KDE                             &
      &            ,IMS,IME,JMS,JME,KMS,KME                             &
      &            ,IPS,IPE,JPS,JPE,KPS,KPE                             &
@@ -1719,8 +1646,6 @@
 !
         turbl_tim=turbl_tim+now_time()-btimx
 #ifdef HWRF
-
-
 !------------------------------------------------------------------------------
 !*** ATMOSPHERIC MODEL OUTPUTS FROM PARENT AND NESTED GRID FOR DMITRYs COUPLER
 !------------------------------------------------------------------------------
@@ -1738,25 +1663,24 @@
 
 !
 !
-
-#ifdef HRD_MULTIPLE_STORMS
-      write(message,*)' No Ocean Coupling Run'
-      call wrf_message(trim(message))
-#else
+      CALL nl_get_multi_storm(1,multi_storm)
+      IF ( .NOT. multi_storm ) THEN
+        write(message,*)' No Ocean Coupling Run'
+        call wrf_debug(1,trim(message))
+      ELSE
 ! Coupling insertion:->
-      btimx=now_time()
-      call ATM_DOFLUXES(grid%twbs,grid%qwbs,grid%rlwin,grid%rswin,grid%radot,grid%rswout, &
-      grid%taux,grid%tauy,grid%pint,grid%prec,grid%u10,grid%v10)
-      flux_tim=flux_tim+now_time()-btimx
+        btimx=now_time()
+        call ATM_DOFLUXES(grid%twbs,grid%qwbs,grid%rlwin,grid%rswin,grid%radot,grid%rswout, &
+        grid%taux,grid%tauy,grid%pint,grid%prec,grid%u10,grid%v10)
+        flux_tim=flux_tim+now_time()-btimx
 !<-:Coupling insertion
 !
 
-      IF(GRID%ID .EQ. 1 .AND. MOD(grid%ntsd,grid%NPHS)==0)THEN
-        btimx=now_time()
-        flux_tim=flux_tim+now_time()-btimx
+        IF(GRID%ID .EQ. 1 .AND. MOD(grid%ntsd,grid%NPHS)==0)THEN
+          btimx=now_time()
+          flux_tim=flux_tim+now_time()-btimx
+        ENDIF
       ENDIF
-
-#endif
 #endif
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
@@ -2341,9 +2265,9 @@
 #endif
         btimx=now_time()
 !-----------------
-#ifdef DM_PARALLEL
-#    include "HALO_NMM_A.inc"
-#endif
+!!#ifdef DM_PARALLEL
+!!#    include "HALO_NMM_A.inc"
+!!#endif
 !-----------------
         exch_tim=exch_tim+now_time()-btimx
 #ifdef NMM_FIND_LOAD_IMBALANCE
@@ -2610,21 +2534,22 @@
 !
 !
 !
-#ifdef HRD_MULTIPLE_STORMS
-      write(message,*)' No Ocean Coupling Run'
-      call wrf_message(trim(message))
-#else
+      CALL nl_get_multi_storm(1,multi_storm)
+      IF ( .NOT. multi_storm ) THEN
+        write(message,*)' No Ocean Coupling Run'
+        call wrf_debug(1,trim(message))
+      ELSE
 ! Coupling insertion:->
-      btimx=now_time()
-      call ATM_SENDFLUXES
-      flux_tim=flux_tim+now_time()-btimx
+        btimx=now_time()
+        call ATM_SENDFLUXES
+        flux_tim=flux_tim+now_time()-btimx
 !<-:Coupling insertion
 !
 ! Kwon's doing to check heat flux
 !
 !  IF(grid%id==2)WRITE(0,*)'AFTER ATM_SENDFLUX grid%qwbs grid%twbs AT 10 10 ',grid%ntsd,grid%qwbs(10,10),grid%twbs(10,10)
 !
-#endif
+      ENDIF
 #endif
 
 !--------------------------------------------------------------------------------------------------------------
@@ -2634,14 +2559,14 @@
 !
 !--------------------------------------------------------------------------------------------------------------
 !
-     IF(mod(grid%NTSD,grid%ntornado)==0) then
+     IF(grid%ntornado>0 .and. mod(grid%NTSD,grid%ntornado)==0) then
         btimx=now_time()
         CALL CALC_TORNADO_GENESIS(GRID,CONFIG_FLAGS)
         tornado_tim=tornado_tim+now_time()-btimx
      ENDIF
 
 #ifdef HWRF
-     IF(mod(grid%NTSD,grid%ntornado)==0) then
+     IF(grid%ntornado==0 .or. mod(grid%NTSD,grid%ntornado)==0) then
       have_best: if(size(grid%best_mslp)>1) then
          have_membrane: if(size(grid%membrane_mslp)>1) then
             call CALC_BEST_MSLP(grid%best_mslp,grid%mslp, &
@@ -2685,6 +2610,63 @@
 !**********************************************************************
 !**********************************************************************
 !----------------------------------------------------------------------
+      CONTAINS
+
+        SUBROUTINE ETAMP_TO_MOIST()
+            implicit none
+            INTEGER :: I,J,K
+            REAL :: QI,QR,QW,WC,FICE,FRAIN
+            if(size(grid%f_ice,1)*size(grid%f_ice,2) <= 1) then
+              return
+            endif
+            DO K=KTS,KTE
+            DO J=MYJS,MYJE
+            DO I=MYIS,MYIE
+              MOIST(I,J,K,P_QV)=grid%q(I,J,K)/(1.-grid%q(I,J,K))
+              WC = grid%cwm(I,J,K)
+              QI = 0.
+              QR = 0.
+              QW = 0.
+              FICE=grid%f_ice(I,K,J)
+              FRAIN=grid%f_rain(I,K,J)
+!
+              IF(FICE>=1.)THEN
+                QI=WC
+              ELSEIF(FICE<=0.)THEN
+                QW=WC
+              ELSE
+                QI=FICE*WC
+                QW=WC-QI
+              ENDIF
+!
+              IF(QW>0..AND.FRAIN>0.)THEN
+                IF(FRAIN>=1.)THEN
+                  QR=QW
+                  QW=0.
+                ELSE
+                  QR=FRAIN*QW
+                  QW=QW-QR
+                ENDIF
+              ENDIF
+!
+              MOIST(I,J,K,P_QC)=QW
+              MOIST(I,J,K,P_QR)=QR
+
+              IF (ETAMP_PHYSICS) THEN
+#ifdef HWRF
+                 MOIST(I,J,K,P_QI)=QI
+                 MOIST(I,J,K,P_QS)=0.
+#else
+                 MOIST(I,J,K,P_QI)=0.
+                 MOIST(I,J,K,P_QS)=QI
+#endif
+              endif
+              MOIST(I,J,K,P_QG)=0.
+            ENDDO
+            ENDDO
+            ENDDO
+         END SUBROUTINE ETAMP_TO_MOIST
+
       END SUBROUTINE SOLVE_NMM
 !----------------------------------------------------------------------
 !**********************************************************************

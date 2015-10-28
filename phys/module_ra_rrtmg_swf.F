@@ -9913,6 +9913,8 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
 
       public :: rrtmg_sw,  earth_sun
 
+      INTEGER, PARAMETER :: debug_level_swf=100
+
       contains
     
       subroutine rrtmg_sw &
@@ -10078,6 +10080,7 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
                                                !    Dimensions: (ncol,nlay+1) jararias, 2013/08/10
 
       integer :: npart, pncol, ns
+      CHARACTER(LEN=256) :: message
 
 ! mji - time
       real :: t1, t2
@@ -10139,10 +10142,13 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
           
       end if
 
-      print *, "RRTMG_SWF: Number of columns is               ", ncol
-      print *, "RRTMG_SWF: Number of columns per partition is ", pncol
+      WRITE(message,*)'RRTMG_SWF: Number of columns is               ',ncol
+      call wrf_debug( debug_level_swf, message)
+      WRITE(message,*)'RRTMG_SWF: Number of columns per partition is ',pncol
+      call wrf_debug( debug_level_swf, message)
       ns = ceiling( real(ncol) / real(pncol) )
-      print *, "RRTMG_SWF: Number of partitions is            ", ns
+      WRITE(message,*)'RRTMG_SWF: Number of partitions is            ',ns
+      call wrf_debug( debug_level_swf, message)
 
       call cpu_time(t1)
                                                       
@@ -10161,10 +10167,12 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
              swdkdir  , swdkdif                                  & ! jararias, 2013/08/10
                                 )
       call cpu_time(t2)
-      print *, "------------------------------------------------"
-      print *, "TOTAL RRTMG_SWF RUN TIME IS   ", t2-t1
-      print *, "------------------------------------------------"
-
+      WRITE(message,*)'------------------------------------------------'
+      call wrf_debug( debug_level_swf, message)
+      WRITE(message,*)'TOTAL RRTMG_SWF RUN TIME IS   ', t2-t1
+      call wrf_debug( debug_level_swf, message)
+      WRITE(message,*)'------------------------------------------------'
+      call wrf_debug( debug_level_swf, message)
                                                       
       end subroutine rrtmg_sw                                                     
 
@@ -11225,13 +11233,14 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
                        its,ite, jts,jte, kts,kte,                 &
                        swupflx, swupflxc, swdnflx, swdnflxc,      &
                        tauaer3d_sw,ssaaer3d_sw,asyaer3d_sw,       & ! jararias 2013/11
+                       use_aer3d,                                 & ! bug fix, SGT 2015/03
                        swddir, swddni, swddif,                    & ! jararias 2013/08
                        xcoszen,julian                             & ! jararias 2013/08
                                                                   )
 !------------------------------------------------------------------
       IMPLICIT NONE
 !------------------------------------------------------------------
-   LOGICAL, INTENT(IN )      ::        warm_rain
+   LOGICAL, INTENT(IN )      ::        warm_rain, use_aer3d
    LOGICAL, INTENT(IN )      ::   is_CAMMGMP_used ! Added for CAM5 RRTMG<->CAMMGMP
 !
    INTEGER, INTENT(IN )      ::        ids,ide, jds,jde, kds,kde, &
@@ -12233,7 +12242,7 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
       end do
       end do
 
-      if ( present (tauaer3d_sw) ) then
+      if ( use_aer3d ) then
 ! ---- jararias 11/2012
          if ( aer_opt .eq. 2) then
             do nb=1,nbndsw
