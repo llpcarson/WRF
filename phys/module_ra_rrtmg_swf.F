@@ -11857,14 +11857,14 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
                inflgsw  = 4
                iceflgsw = 4
                DO K=kts,kte
-                  reice1D(icol,K) = MAX(10., re_ice(I,K,J)*1.E6)
-                  if (reice1D(icol,K).LE.10..AND.cldfra3d(i,k,j).gt.0.) then
+                  reice1D(icol,K) = MAX(5., re_ice(I,K,J)*1.E6)
+                  if (reice1D(icol,K).LE.5..AND.cldfra3d(i,k,j).gt.0.) then
                      idx_rei = int(t3d(i,k,j)-179.)
                      idx_rei = min(max(idx_rei,1),75)
                      corr = t3d(i,k,j) - int(t3d(i,k,j))
                      reice1D(icol,K) = retab(idx_rei)*(1.-corr) +      &
      &                                 retab(idx_rei+1)*corr
-                     reice1D(icol,K) = MAX(reice1D(icol,K), 10.0)
+                     reice1D(icol,K) = MAX(reice1D(icol,K), 5.0)
                   endif
                ENDDO
             ELSE
@@ -12244,7 +12244,7 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
 
       if ( use_aer3d ) then
 ! ---- jararias 11/2012
-         if ( aer_opt .eq. 2) then
+         if (aer_opt .eq. 2 .or. aer_opt .eq. 3) then
             do nb=1,nbndsw
                do k=kts,kte
                   tauaer(icol,k,nb)=tauaer3d_sw(i,k,j,nb)
@@ -12353,7 +12353,7 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
       enddo
 
       IF ( PRESENT( aerod ) ) THEN
-      if ( aer_opt .eq. 0 .or. aer_opt .eq. 2 ) then
+      if ( aer_opt .eq. 0 .or. aer_opt .eq. 2 .or. aer_opt .eq. 3 ) then
          iaer = 10
          do na = 1, naerec
             do k = kts, kte+1

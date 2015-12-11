@@ -11377,7 +11377,7 @@ use module_wrf_error
 #if (HWRF == 1)
    USE module_state_description, ONLY : FER_MP_HIRES, FER_MP_HIRES_ADVECT, ETAMP_HWRF 
 #else
-   USE module_state_description, ONLY : FER_MP_HIRES
+   USE module_state_description, ONLY : FER_MP_HIRES, FER_MP_HIRES_ADVECT
 #endif
 !use module_dm
 
@@ -11974,7 +11974,8 @@ CONTAINS
              mp_physics == FER_MP_HIRES_ADVECT .OR. &
              mp_physics == ETAMP_HWRF ) THEN
 #else
-        IF ( mp_physics == FER_MP_HIRES ) THEN
+        IF ( mp_physics == FER_MP_HIRES .OR. &
+             mp_physics == FER_MP_HIRES_ADVECT) THEN
 #endif
                   DO K=kts,kte
                      qi1d(k) = qi3d(i,k,j)
@@ -12046,14 +12047,14 @@ CONTAINS
                inflglw  = 4
                iceflglw = 4
                DO K=kts,kte
-                  reice1D(ncol,K) = MAX(10., re_ice(I,K,J)*1.E6)
-                  if (reice1D(ncol,K).LE.10..AND.cldfra3d(i,k,j).gt.0.) then
+                  reice1D(ncol,K) = MAX(5., re_ice(I,K,J)*1.E6)
+                  if (reice1D(ncol,K).LE.5..AND.cldfra3d(i,k,j).gt.0.) then
                      idx_rei = int(t3d(i,k,j)-179.)
                      idx_rei = min(max(idx_rei,1),75)
                      corr = t3d(i,k,j) - int(t3d(i,k,j))
                      reice1D(ncol,K) = retab(idx_rei)*(1.-corr) +       &
      &                                 retab(idx_rei+1)*corr
-                     reice1D(ncol,K) = MAX(reice1D(ncol,K), 10.0)
+                     reice1D(ncol,K) = MAX(reice1D(ncol,K), 5.0)
                   endif
                ENDDO
             ELSE

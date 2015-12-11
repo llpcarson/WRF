@@ -36,7 +36,7 @@
 !.. Remaining values should probably be left alone.
 !..
 !..Author: Greg Thompson, NCAR-RAL, gthompsn@ucar.edu, 303-497-2805
-!..Last modified: 11 Feb 2015   Aerosol additions to v3.5.1 code 9/2013
+!..Last modified: 09 Nov 2015   Aerosol additions to v3.5.1 code 9/2013
 !..                 Cloud fraction additions 11/2014 part of pre-v3.7
 !+---+-----------------------------------------------------------------+
 !wrft:model_layer:physics
@@ -1053,7 +1053,7 @@
       REAL, DIMENSION(kts:kte):: &
                           qv1d, qc1d, qi1d, qr1d, qs1d, qg1d, ni1d,     &
                           nr1d, nc1d, nwfa1d, nifa1d,                   &
-                          t1d, p1d, w1d, dz1d, dBZ
+                          t1d, p1d, w1d, dz1d, rho, dBZ
       REAL, DIMENSION(kts:kte):: re_qc1d, re_qi1d, re_qs1d
 #if ( WRF_CHEM == 1 )
       REAL, DIMENSION(kts:kte):: &
@@ -1167,9 +1167,10 @@
             nwfa1 = nwfa2d(i,j)
          else
             do k = kts, kte
-               nc1d(k) = Nt_c
-               nwfa1d(k) = 11.1E6
-               nifa1d(k) = naIN1*0.01
+               rho(k) = 0.622*p1d(k)/(R*t1d(k)*(qv1d(k)+0.622))
+               nc1d(k) = Nt_c/rho(k)
+               nwfa1d(k) = 11.1E6/rho(k)
+               nifa1d(k) = naIN1*0.01/rho(k)
             enddo
             nwfa1 = 11.1E6
          endif
@@ -1324,16 +1325,16 @@
 
          IF (has_reqc.ne.0 .and. has_reqi.ne.0 .and. has_reqs.ne.0) THEN
           do k = kts, kte
-             re_qc1d(k) = 2.51E-6
-             re_qi1d(k) = 10.01E-6
-             re_qs1d(k) = 10.01E-6
+             re_qc1d(k) = 2.49E-6
+             re_qi1d(k) = 4.99E-6
+             re_qs1d(k) = 9.99E-6
           enddo
           call calc_effectRad (t1d, p1d, qv1d, qc1d, nc1d, qi1d, ni1d, qs1d,  &
                       re_qc1d, re_qi1d, re_qs1d, kts, kte)
           do k = kts, kte
-             re_cloud(i,k,j) = MAX( 2.51E-6, MIN(re_qc1d(k), 50.E-6))
-             re_ice(i,k,j)   = MAX(10.01E-6, MIN(re_qi1d(k), 125.E-6))
-             re_snow(i,k,j)  = MAX(10.01E-6, MIN(re_qs1d(k), 999.E-6))
+             re_cloud(i,k,j) = MAX(2.49E-6, MIN(re_qc1d(k), 50.E-6))
+             re_ice(i,k,j)   = MAX(4.99E-6, MIN(re_qi1d(k), 125.E-6))
+             re_snow(i,k,j)  = MAX(9.99E-6, MIN(re_qs1d(k), 999.E-6))
           enddo
          ENDIF
 
@@ -3256,7 +3257,8 @@
            t4_vts = Kap1*Mrat**mu_s*csg(7)*ils2**cse(7)
            vts = rhof(k)*av_s * (t1_vts+t2_vts)/(t3_vts+t4_vts)
            if (temp(k).gt. T_0) then
-            vtsk(k) = MAX(vts*vts_boost(k), vtrk(k))
+            vtsk(k) = MAX(vts*vts_boost(k),                             &
+     &                vts*((vtrk(k)-vts*vts_boost(k))/(temp(k)-T_0)))
            else
             vtsk(k) = vts*vts_boost(k)
            endif
@@ -5018,7 +5020,7 @@
       do k = kts, kte
          if (ri(k).le.R1 .or. ni(k).le.R2) CYCLE
          lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
-         re_qi1d(k) = MAX(10.01E-6, MIN(SNGL(0.5D0 * DBLE(3.+mu_i)/lami), 125.E-6))
+         re_qi1d(k) = MAX(5.01E-6, MIN(SNGL(0.5D0 * DBLE(3.+mu_i)/lami), 125.E-6))
       enddo
       endif
 
