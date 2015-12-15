@@ -835,6 +835,8 @@ CONTAINS
 
    gfdl_lw = .false.
    gfdl_sw = .false.
+   flg_lw = .false.
+   flg_sw = .false.
 
 ! Allocate aerosol arrays used by aer_opt = 2 option
    use_aer3d=.false.
@@ -1132,7 +1134,11 @@ CONTAINS
 !     Adapted from camrad code
      IF ( PRESENT( O3RAD ) ) THEN
         call wrf_debug(1,'Have o3rad')
+#if (EM_CORE==1)
+     IF ( o3input .EQ. 2 .AND. id .EQ. 1 ) THEN
+#else
      IF ( o3input .EQ. 2 ) THEN
+#endif
 !       ! Find the current month (adapted from Cavallo)
 !       CALL cam_time_interp( ozmixm, pin, levsiz, date_str, &
 !                             ids , ide , jds , jde , kds , kde , &
@@ -1524,7 +1530,7 @@ CONTAINS
            
      END SELECT lwrad_select    
 
-     IF (lw_physics .gt. 0 .and. .not.gfdl_lw) THEN
+     IF (lw_physics .gt. 0 .and. .not.gfdl_lw .and. .not.flg_lw) THEN
         DO j=jts,jte
         DO k=kts,kte
         DO i=its,ite
@@ -1998,7 +2004,7 @@ CONTAINS
           ENDIF
      ENDIF
 
-     IF (sw_physics .gt. 0 .and. .not.gfdl_sw) THEN
+     IF (sw_physics .gt. 0 .and. .not.gfdl_sw .and. .not.flg_sw) THEN
         DO j=jts,jte
         DO k=kts,kte
         DO i=its,ite
@@ -2042,21 +2048,13 @@ CONTAINS
            ENDDO
            ENDDO
         ENDIF
-        IF ( PRESENT( qs  ) .AND. ICLOUD.eq.3) THEN
-           DO j=jts,jte
-           DO k=kts,kte
-           DO i=its,ite
-             qs(i,k,j) = qs_save(i,k,j)
-           ENDDO
-           ENDDO
-           ENDDO
-        ENDIF
 
      IF ( PRESENT( diffuse_frac ) ) THEN 
          DO j=jts,jte
          DO i=its,ite
-           if (coszen(i,j).gt.1e-3) then
+           if (swdown(i,j).gt.0.001) then
               diffuse_frac(i,j) = swddif(i,j)/swdown(i,j)
+              diffuse_frac(i,j) = min(diffuse_frac(i,j),1.0)
            else
               diffuse_frac(i,j) = 0.
            endif
@@ -2085,6 +2083,28 @@ CONTAINS
          ENDDO
          ENDDO
          ENDIF
+      ENDIF
+      IF (ICLOUD == 3) THEN
+        IF (PRESENT(CLDFRA) .AND.                                       &
+            PRESENT(F_QC) .AND. PRESENT ( F_QI ) ) THEN
+           DO j = jts,jte
+           DO k = kts,kte
+           DO i = its,ite
+              qc(i,k,j) = qc_save(i,k,j)
+              qi(i,k,j) = qi_save(i,k,j)
+           ENDDO
+           ENDDO
+           ENDDO
+           IF (PRESENT(F_QS)) THEN
+              DO j = jts,jte
+              DO k = kts,kte
+              DO i = its,ite
+                 qs(i,k,j) = qs_save(i,k,j)
+              ENDDO
+              ENDDO
+              ENDDO
+           ENDIF
+        ENDIF
       ENDIF
 
       ! jararias, aug 2013, updated 2013/11
@@ -2714,7 +2734,15 @@ CONTAINS
           ids,ide, jds,jde, kds,kde,                                 &
           ims,ime, jms,jme, kms,kme,                                 &
           its,ite, jts,jte, kts,kte                                  )
+
+#if (HWRF == 1)
+   USE module_state_description, ONLY : FER_MP_HIRES, FER_MP_HIRES_ADVECT, ETAMP_HWRF 
+#else
+   USE module_state_description, ONLY : FER_MP_HIRES
+#endif
 !---------------------------------------------------------------------
+   use module_state_description, only: etamp_hwrf, fer_mp_hires, &
+                                       fer_mp_hires_advect
    IMPLICIT NONE
 !---------------------------------------------------------------------
    INTEGER,  INTENT(IN   )   ::           ids,ide, jds,jde, kds,kde, &
@@ -2810,7 +2838,7 @@ CONTAINS
       QVSW = EP_2 * esw / ( p_phy(i,k,j) - esw )
       QVSI = EP_2 * esi / ( p_phy(i,k,j) - esi )
 
-      IF ( PRESENT(F_QI) .and. PRESENT(F_QC) .and. PRESENT(F_QS) ) THEN
+      ifouter: IF ( PRESENT(F_QI) .and. PRESENT(F_QC) .and. PRESENT(F_QS) ) THEN
 
 ! mji - For MP options 2, 4, 6, 7, 8, etc. (qc = liquid, qi = ice, qs = snow)
          IF ( F_QI .and. F_QC .and. F_QS) THEN
@@ -2860,7 +2888,13 @@ CONTAINS
          ENDIF
 !BSF - For HWRF MP option; (qc = liquid, qi = cloud ice+snow)
 !         IF ( F_QC .and. F_QI .and. .not. F_QS ) THEN
-         IF ( mp_physics .eq. 5 .or. mp_physics .eq. 85) THEN
+#if (HWRF == 1)
+         IF ( mp_physics .eq. FER_MP_HIRES .or. &
+	      mp_physics .eq. FER_MP_HIRES_ADVECT .or. &
+	      mp_physics .eq. ETAMP_HWRF) THEN
+#else
+         IF ( mp_physics .eq. FER_MP_HIRES ) THEN
+#endif
            QIMID = QI(i,k,j)     !- total ice (cloud ice + snow)
            QWMID = QC(i,k,j)     !- cloud water
            QCLD=QWMID+QIMID      !- cloud water + total ice
@@ -2871,10 +2905,11 @@ CONTAINS
               if (tc<-40.) weight=1.
            ENDIF
          ENDIF
+
       ELSE
          CLDFRA(i,k,j)=0.
 
-      ENDIF !  IF ( F_QI .and. F_QC .and. F_QS)
+      ENDIF ifouter !  IF ( F_QI .and. F_QC .and. F_QS)
 
 
       QVS_WEIGHT = (1-weight)*QVSW + weight*QVSI

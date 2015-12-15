@@ -342,7 +342,6 @@
       ETAMP_PHYSICS=.FALSE.
 !
       IF (CONFIG_FLAGS%MP_PHYSICS == ETAMPNEW .OR.                 &
-!     &    CONFIG_FLAGS%MP_PHYSICS == ETAMP_HR .OR.                 &
      &    CONFIG_FLAGS%MP_PHYSICS == FER_MP_HIRES .OR.                 &
      &    CONFIG_FLAGS%MP_PHYSICS == ETAMP_HWRF ) THEN
 !
@@ -713,16 +712,16 @@
 !
 !-----------------------------------------------------------------------
 !
-!zhang#ifdef DM_PARALLEL
-!zhang#    include "HALO_NMM_A.inc"
-!zhang#endif
+!!#ifdef DM_PARALLEL
+!!#    include "HALO_NMM_A.inc"
+!!#endif
 !
 !-----------------------------------------------------------------------
-!zhang#ifdef DM_PARALLEL
-!zhang      IF (.NOT.ETAMP_PHYSICS) THEN
-!zhang#    include "HALO_NMM_A_3.inc"
-!zhang      ENDIF
-!zhang#endif
+!!#ifdef DM_PARALLEL
+!!      IF (.NOT.ETAMP_PHYSICS) THEN
+!!#    include "HALO_NMM_A_3.inc"
+!!      ENDIF
+!!#endif
 !-----------------------------------------------------------------------
 !***  FIRST STEP INITIALIZATION OF PASSIVE SUBSTANCE VARIABLES
 !-----------------------------------------------------------------------
@@ -816,9 +815,9 @@
       btimx=now_time()
 !zhang try2
 !-----------------
-!zhang#ifdef DM_PARALLEL
-!zhang#    include "HALO_NMM_D.inc"
-!zhang#endif
+!!#ifdef DM_PARALLEL
+!!#    include "HALO_NMM_D.inc"
+!!#endif
 !-----------------
       exch_tim=exch_tim+now_time()-btimx
 #ifdef NMM_FIND_LOAD_IMBALANCE
@@ -916,9 +915,9 @@
       call blockf(loadimbal_tim,'after adve')
 #endif
           btimx=now_time()
-!zhang#ifdef DM_PARALLEL
-!zhang#    include "HALO_NMM_I.inc"
-!zhang#endif
+!!#ifdef DM_PARALLEL
+!!#    include "HALO_NMM_I.inc"
+!!#endif
           exch_tim=exch_tim+now_time()-btimx
 #ifdef NMM_FIND_LOAD_IMBALANCE
       call blockf(loadimbal_tim,'after halo I')
@@ -1055,44 +1054,7 @@
 !***  CONFIGURATIONS WHERE IT MAY BE USED OUTSIDE OF THE PHYSICS.
 !
         IF(.NOT.OPERATIONAL_PHYSICS)THEN
-          DO K=KTS,KTE
-            DO J=MYJS,MYJE
-              DO I=MYIS,MYIE
-                MOIST(I,J,K,P_QV)=grid%q(I,J,K)/(1.-grid%q(I,J,K))
-                WC = grid%cwm(I,J,K)
-                QI = 0.
-                QR = 0.
-                QW = 0.
-                FICE=grid%f_ice(I,K,J)
-                FRAIN=grid%f_rain(I,K,J)
-!
-                IF(FICE>=1.)THEN
-                  QI=WC
-                ELSEIF(FICE<=0.)THEN
-                  QW=WC
-                ELSE
-                  QI=FICE*WC
-                  QW=WC-QI
-                ENDIF
-!
-                IF(QW>0..AND.FRAIN>0.)THEN
-                  IF(FRAIN>=1.)THEN
-                    QR=QW
-                    QW=0.
-                  ELSE
-                    QR=FRAIN*QW
-                    QW=QW-QR
-                  ENDIF
-                ENDIF
-!
-                MOIST(I,J,K,P_QC)=QW
-                MOIST(I,J,K,P_QR)=QR
-                MOIST(I,J,K,P_QI)=0.
-                MOIST(I,J,K,P_QS)=QI
-                MOIST(I,J,K,P_QG)=0.
-              ENDDO
-            ENDDO
-          ENDDO
+           call ETAMP_TO_MOIST()
         ENDIF
 !
         had2_tim=had2_tim+now_time()-btimx
@@ -1384,52 +1346,7 @@
 !***  CONFIGURATIONS WHERE IT MAY BE USED OUTSIDE OF THE PHYSICS.
 !
           IF(.NOT.OPERATIONAL_PHYSICS)THEN
-            DO K=KTS,KTE
-            DO J=MYJS,MYJE
-            DO I=MYIS,MYIE
-              MOIST(I,J,K,P_QV)=grid%q(I,J,K)/(1.-grid%q(I,J,K))
-              WC = grid%cwm(I,J,K)
-              QI = 0.
-              QR = 0.
-              QW = 0.
-              FICE=grid%f_ice(I,K,J)
-              FRAIN=grid%f_rain(I,K,J)
-!
-              IF(FICE>=1.)THEN
-                QI=WC
-              ELSEIF(FICE<=0.)THEN
-                QW=WC
-              ELSE
-                QI=FICE*WC
-                QW=WC-QI
-              ENDIF
-!
-              IF(QW>0..AND.FRAIN>0.)THEN
-                IF(FRAIN>=1.)THEN
-                  QR=QW
-                  QW=0.
-                ELSE
-                  QR=FRAIN*QW
-                  QW=QW-QR
-                ENDIF
-              ENDIF
-!
-              MOIST(I,J,K,P_QC)=QW
-              MOIST(I,J,K,P_QR)=QR
-
-              IF (ETAMP_PHYSICS) THEN
-#ifdef HWRF
-                 MOIST(I,J,K,P_QI)=QI
-                 MOIST(I,J,K,P_QS)=0.
-#else
-                 MOIST(I,J,K,P_QI)=0.
-                 MOIST(I,J,K,P_QS)=QI
-#endif
-              endif
-              MOIST(I,J,K,P_QG)=0.
-            ENDDO
-            ENDDO
-            ENDDO
+             call ETAMP_TO_MOIST()
           ENDIF
 !
 !-----------------------------------------------------------------------
@@ -1564,6 +1481,7 @@
      &                ,grid%cuppt,grid%vegfrc,grid%sno,grid%htop,grid%hbot                      &
      &                ,grid%z,grid%sice,NUM_AEROSOLC,NUM_OZMIXM        &
      &                ,OZMIXM,grid%PIN,grid%LEVSIZ                     &
+
      &                ,GRID,CONFIG_FLAGS                               &
      &                ,RTHRATEN                                        &  
      &                ,grid%re_cloud,grid%re_ice,grid%re_snow          &  ! G. Thompson
@@ -2347,9 +2265,9 @@
 #endif
         btimx=now_time()
 !-----------------
-!zhang#ifdef DM_PARALLEL
-!zhang#    include "HALO_NMM_A.inc"
-!zhang#endif
+!!#ifdef DM_PARALLEL
+!!#    include "HALO_NMM_A.inc"
+!!#endif
 !-----------------
         exch_tim=exch_tim+now_time()-btimx
 #ifdef NMM_FIND_LOAD_IMBALANCE
@@ -2641,14 +2559,14 @@
 !
 !--------------------------------------------------------------------------------------------------------------
 !
-     IF(mod(grid%NTSD,grid%ntornado)==0) then
+     IF(grid%ntornado>0 .and. mod(grid%NTSD,grid%ntornado)==0) then
         btimx=now_time()
         CALL CALC_TORNADO_GENESIS(GRID,CONFIG_FLAGS)
         tornado_tim=tornado_tim+now_time()-btimx
      ENDIF
 
 #ifdef HWRF
-     IF(mod(grid%NTSD,grid%ntornado)==0) then
+     IF(grid%ntornado==0 .or. mod(grid%NTSD,grid%ntornado)==0) then
       have_best: if(size(grid%best_mslp)>1) then
          have_membrane: if(size(grid%membrane_mslp)>1) then
             call CALC_BEST_MSLP(grid%best_mslp,grid%mslp, &
@@ -2692,6 +2610,63 @@
 !**********************************************************************
 !**********************************************************************
 !----------------------------------------------------------------------
+      CONTAINS
+
+        SUBROUTINE ETAMP_TO_MOIST()
+            implicit none
+            INTEGER :: I,J,K
+            REAL :: QI,QR,QW,WC,FICE,FRAIN
+            if(size(grid%f_ice,1)*size(grid%f_ice,2) <= 1) then
+              return
+            endif
+            DO K=KTS,KTE
+            DO J=MYJS,MYJE
+            DO I=MYIS,MYIE
+              MOIST(I,J,K,P_QV)=grid%q(I,J,K)/(1.-grid%q(I,J,K))
+              WC = grid%cwm(I,J,K)
+              QI = 0.
+              QR = 0.
+              QW = 0.
+              FICE=grid%f_ice(I,K,J)
+              FRAIN=grid%f_rain(I,K,J)
+!
+              IF(FICE>=1.)THEN
+                QI=WC
+              ELSEIF(FICE<=0.)THEN
+                QW=WC
+              ELSE
+                QI=FICE*WC
+                QW=WC-QI
+              ENDIF
+!
+              IF(QW>0..AND.FRAIN>0.)THEN
+                IF(FRAIN>=1.)THEN
+                  QR=QW
+                  QW=0.
+                ELSE
+                  QR=FRAIN*QW
+                  QW=QW-QR
+                ENDIF
+              ENDIF
+!
+              MOIST(I,J,K,P_QC)=QW
+              MOIST(I,J,K,P_QR)=QR
+
+              IF (ETAMP_PHYSICS) THEN
+#ifdef HWRF
+                 MOIST(I,J,K,P_QI)=QI
+                 MOIST(I,J,K,P_QS)=0.
+#else
+                 MOIST(I,J,K,P_QI)=0.
+                 MOIST(I,J,K,P_QS)=QI
+#endif
+              endif
+              MOIST(I,J,K,P_QG)=0.
+            ENDDO
+            ENDDO
+            ENDDO
+         END SUBROUTINE ETAMP_TO_MOIST
+
       END SUBROUTINE SOLVE_NMM
 !----------------------------------------------------------------------
 !**********************************************************************
