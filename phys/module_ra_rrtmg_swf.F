@@ -9913,8 +9913,6 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
 
       public :: rrtmg_sw,  earth_sun
 
-      INTEGER, PARAMETER :: debug_level_swf=100
-
       contains
     
       subroutine rrtmg_sw &
@@ -10080,7 +10078,6 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
                                                !    Dimensions: (ncol,nlay+1) jararias, 2013/08/10
 
       integer :: npart, pncol, ns
-      CHARACTER(LEN=256) :: message
 
 ! mji - time
       real :: t1, t2
@@ -10142,13 +10139,10 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
           
       end if
 
-      WRITE(message,*)'RRTMG_SWF: Number of columns is               ',ncol
-      call wrf_debug( debug_level_swf, message)
-      WRITE(message,*)'RRTMG_SWF: Number of columns per partition is ',pncol
-      call wrf_debug( debug_level_swf, message)
+      print *, "RRTMG_SWF: Number of columns is               ", ncol
+      print *, "RRTMG_SWF: Number of columns per partition is ", pncol
       ns = ceiling( real(ncol) / real(pncol) )
-      WRITE(message,*)'RRTMG_SWF: Number of partitions is            ',ns
-      call wrf_debug( debug_level_swf, message)
+      print *, "RRTMG_SWF: Number of partitions is            ", ns
 
       call cpu_time(t1)
                                                       
@@ -10167,12 +10161,10 @@ write(0,*)'pfu ',shape( pfu)          ! upwelling flux (W/m2)
              swdkdir  , swdkdif                                  & ! jararias, 2013/08/10
                                 )
       call cpu_time(t2)
-      WRITE(message,*)'------------------------------------------------'
-      call wrf_debug( debug_level_swf, message)
-      WRITE(message,*)'TOTAL RRTMG_SWF RUN TIME IS   ', t2-t1
-      call wrf_debug( debug_level_swf, message)
-      WRITE(message,*)'------------------------------------------------'
-      call wrf_debug( debug_level_swf, message)
+      print *, "------------------------------------------------"
+      print *, "TOTAL RRTMG_SWF RUN TIME IS   ", t2-t1
+      print *, "------------------------------------------------"
+
                                                       
       end subroutine rrtmg_sw                                                     
 

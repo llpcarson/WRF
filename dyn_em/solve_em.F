@@ -298,7 +298,6 @@ SUBROUTINE solve_em ( grid , config_flags  &
    endif
 
    grid%itimestep = grid%itimestep + 1
-   grid%dtbc = grid%dtbc + grid%dt
 
    IF( coupler_on ) CALL cpl_store_input( grid, config_flags )
 
@@ -4412,6 +4411,7 @@ BENCH_END(bc_2d_tim)
    END DO tile_bc_loop_3
    !$OMP END PARALLEL DO
 
+     grid%dtbc = grid%dtbc + grid%dt
    ENDIF
 
 ! reset surface w for consistency
