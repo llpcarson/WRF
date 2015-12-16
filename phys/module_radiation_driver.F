@@ -2087,6 +2087,7 @@ CONTAINS
       IF (ICLOUD == 3) THEN
         IF (PRESENT(CLDFRA) .AND.                                       &
             PRESENT(F_QC) .AND. PRESENT ( F_QI ) ) THEN
+           CALL wrf_debug (150, 'DEBUG-GT, back to micro-only Qc and Qi')
            DO j = jts,jte
            DO k = kts,kte
            DO i = its,ite
@@ -2106,6 +2107,7 @@ CONTAINS
            ENDIF
         ENDIF
       ENDIF
+
 
       ! jararias, aug 2013, updated 2013/11
       ! parameters update for SW surface fluxes interpolation
@@ -2989,7 +2991,7 @@ CONTAINS
       REAL:: RH_00L, RH_00O, RH_00, RHI_max
       REAL, DIMENSION(ims:ime,kms:kme,jms:jme):: qvsat
       INTEGER:: i,j,k
-      REAL:: TK, TC, qvsi, qvsw, RHUM
+      REAL:: TK, TC, qvsi, qvsw, RHUM, xx, yy
       REAL, DIMENSION(kms:kme):: qvs1d, cfr1d, T1d,                     &
      &                           P1d, R1d, qc1d, qi1d, qs1d
 
@@ -3013,7 +3015,7 @@ CONTAINS
          RHI_max = 0.0
          CLDFRA(I,K,J) = 0.0
 
-         if (qc(i,k,j)+qi(i,k,j)+qs(i,k,j) .gt. 1.E-7) then
+         if (qc(i,k,j)+qi(i,k,j)+qs(i,k,j) .gt. 1.E-8) then
             CLDFRA(I,K,J) = 1.0
             qvsat(i,k,j) = qv(i,k,j)
          else
@@ -3031,7 +3033,7 @@ CONTAINS
             else
                qvsat(i,k,j) = qvsw - (qvsw-qvsi)*(-12.0-tc)/(-12.0+30.)
             endif
-            RHUM = qv(i,k,j)/qvsat(i,k,j)
+            RHUM = MAX(0.01, MIN(qv(i,k,j)/qvsat(i,k,j), 0.9999))
 
             IF ((XLAND(I,J)-1.5).GT.0.) THEN                             !--- Ocean
                RH_00 = RH_00O
@@ -3039,16 +3041,21 @@ CONTAINS
                RH_00 = RH_00L
             ENDIF
 
-            if (tc .ge. -12.0) then
-               RHUM = MIN(0.999, RHUM)
-               CLDFRA(I,K,J) = MAX(0.0, 1.0-SQRT((1.0-RHUM)/(1.-RH_00)))
-            elseif (tc.lt.-12..and.tc.gt.-70. .and. RHUM.gt.RH_00O) then
-               RHI_max = MAX(RHUM+1.E-6, qvsw/qvsi)
-               CLDFRA(I,K,J) = MAX(0., ((RH_00O-RHUM)/(RH_00O-RHI_max)) &
-     &                                *((RH_00O-RHUM)/(RH_00O-RHI_max)))
-            endif
+!           if (tc .ge. -12.0) then
+!              RHUM = MIN(0.999, RHUM)
+!              CLDFRA(I,K,J) = MAX(0.0, 1.0-SQRT((1.0-RHUM)/(1.-RH_00)))
+!           elseif (tc.lt.-12..and.tc.gt.-70. .and. RHUM.gt.RH_00O) then
+!              RHI_max = MAX(RHUM+1.E-6, qvsw/qvsi)
+!              CLDFRA(I,K,J) = MAX(0., ((RH_00O-RHUM)/(RH_00O-RHI_max)) &
+!    &                                *((RH_00O-RHUM)/(RH_00O-RHI_max)))
+!           endif
 
-            CLDFRA(I,K,J) = MIN(0.95, CLDFRA(I,K,J))
+            if (RHUM .gt. 0.5 .and. tc.gt.-70) then
+               xx = MAX(0.01, MIN(10./3. * LOG10(100./gridkm), 10.))
+               yy = MAX(0.0001, 1.0-RHUM)
+               CLDFRA(I,K,J) = -0.15 + 5./(5000.*xx*yy/(500./xx +10*yy) + 5. + 100.*yy)
+               CLDFRA(I,K,J) = MAX(0.0, MIN(CLDFRA(I,K,J), 0.85))
+            endif
 
          endif
       ENDDO
@@ -3112,7 +3119,7 @@ CONTAINS
 !..Local vars.
       REAL, DIMENSION(kts:kte):: theta, dz
       REAL:: Z1, Z2, theta1, theta2, ht1, ht2
-      INTEGER:: k, k2, k_tropo, k_m12C, k_m40C, k_cldb, k_cldt
+      INTEGER:: k, k2, k_tropo, k_m12C, k_m40C, k_cldb, k_cldt, kbot
       LOGICAL:: in_cloud
       character*512 dbg_msg
 
@@ -3172,6 +3179,19 @@ CONTAINS
          endif
       ENDDO
 
+!..We would like to prevent fractional clouds below LCL in idealized
+!.. situation with deep well-mixed convective PBL, that otherwise is
+!.. likely to get clouds in more realistic capping inversion layer.
+
+      kbot = kts+2
+      DO k = kbot, k_m12C
+         if ( (theta(k)-theta(k-1)) .gt. 0.05E-3*dz(k)) EXIT
+      ENDDO
+      kbot = MAX(kts+1, k-1)
+      DO k = kts, kbot
+         if (cfr1d(k).gt.0.0 .and. cfr1d(k).lt.0.999) cfr1d(k) = 0.
+      ENDDO
+
 
 !..Starting below tropo height, if cloud fraction greater than 1 percent,
 !.. compute an approximate total layer depth of cloud, determine a total 
@@ -3215,15 +3235,15 @@ CONTAINS
       k_cldb = k_tropo
       in_cloud = .false.
       k = k_m12C
-      DO WHILE (.not. in_cloud .AND. k.gt.kts)
+      DO WHILE (.not. in_cloud .AND. k.gt.kbot)
          k_cldt = 0
          if (cfr1d(k).ge.0.01) then
             in_cloud = .true.
             k_cldt = MAX(k_cldt, k)
          endif
          if (in_cloud) then
-            DO k2 = k_cldt-1, kts, -1
-               if (cfr1d(k2).lt.0.01 .or. k2.eq.kts) then
+            DO k2 = k_cldt-1, kbot, -1
+               if (cfr1d(k2).lt.0.01 .or. k2.eq.kbot) then
                   k_cldb = k2+1
                   goto 88
                endif
@@ -3276,7 +3296,7 @@ CONTAINS
       INTEGER, INTENT(IN):: k1,k2, kts,kte
       REAL, DIMENSION(kts:kte), INTENT(IN):: cfr, qvs, T, Rho, dz
       REAL, DIMENSION(kts:kte), INTENT(INOUT):: qi, qs
-      REAL:: iwp, xiwp, max_iwp, tdz, this_iwp
+      REAL:: iwp, xiwp, max_iwp, tdz, this_iwp, iwp_exists
       INTEGER:: k
       REAL, PARAMETER:: entr=0.35
 
@@ -3284,10 +3304,13 @@ CONTAINS
 
       tdz = 0.
       iwp = 0.
+      iwp_exists = 0.
       do k = k1, k2
          tdz = tdz + dz(k)
          iwp = iwp + MAX(0., (qvs(k-1)-qvs(k))*Rho(k)*dz(k))
+         iwp_exists = iwp_exists + (qi(k)+qs(k))*Rho(k)*dz(k)
       enddo
+      if (iwp_exists .gt. 1.0) RETURN
       max_iwp = MAX(max_iwp*(1.-entr), MIN(1.0, iwp*(1.0-entr)))
 
       do k = k1, k2
@@ -3308,7 +3331,7 @@ CONTAINS
 !
       INTEGER, INTENT(IN):: k1,k2, kts,kte
       REAL, DIMENSION(kts:kte):: cfr, qc, qvs, T, Rho, dz
-      REAL:: lwp, xlwp, max_lwp, tdz, this_lwp
+      REAL:: lwp, xlwp, max_lwp, tdz, this_lwp, lwp_exists
       INTEGER:: k
       REAL, PARAMETER:: entr=0.35
 
@@ -3316,17 +3339,22 @@ CONTAINS
 
       tdz = 0.
       lwp = 0.
+      lwp_exists = 0.
       do k = k1, k2
          tdz = tdz + dz(k)
          lwp = lwp + MAX(0., (qvs(k-1)-qvs(k))*Rho(k)*dz(k))
+         lwp_exists = lwp_exists + qc(k)*Rho(k)*dz(k)
       enddo
+      if (lwp_exists .gt. 1.0) RETURN
       max_lwp = MAX(max_lwp*(1.-entr), MIN(1.0, lwp*(1.0-entr)))
 
       do k = k1, k2
          this_lwp = max_lwp*dz(k)/tdz
-         if (cfr(k).gt.0.95.and.qc(k).lt.1.E-7.and.T(k).lt.273.16) then
+         if (cfr(k).gt.0.95.and.qc(k).lt.1.E-7.and.T(k).lt.253.16) then
             qc(k) = qc(k) + 0.05*this_lwp/Rho(k)/dz(k)
-         elseif (cfr(k).gt.0.01.and.cfr(k).lt.0.99.and.T(k).le.298.16) then
+         elseif (cfr(k).gt.0.01.and.cfr(k).lt.0.99.and.T(k).lt.273.16.and.T(k).ge.253.16) then
+            qc(k) = qc(k) + cfr(k)*this_lwp/Rho(k)/dz(k)
+         elseif (cfr(k).gt.0.01.and.cfr(k).lt.0.99.and.T(k).le.298.16.and.T(k).ge.273.16) then
             qc(k) = qc(k) + cfr(k)*cfr(k)*this_lwp/Rho(k)/dz(k)
          endif
       enddo

@@ -389,6 +389,9 @@
 !+---+
 !ctrlL
 
+      PUBLIC :: rslf
+      PUBLIC :: rsif
+
       CONTAINS
 
       SUBROUTINE thompson_init(hgt, nwfa2d, nwfa, nifa, dx, dy,         &
@@ -1642,7 +1645,7 @@
             xDi = (bm_i + mu_i + 1.) * ilami
             if (xDi.lt. 5.E-6) then
              lami = cie(2)/5.E-6
-             ni(k) = MIN(99.D6, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
+             ni(k) = MIN(499.D3, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
             elseif (xDi.gt. 300.E-6) then
              lami = cie(2)/300.E-6
              ni(k) = cig(1)*oig2*ri(k)/am_i*lami**bm_i
@@ -2674,7 +2677,7 @@
            xDi = (bm_i + mu_i + 1.) * ilami
            if (xDi.lt. 5.E-6) then
             lami = cie(2)/5.E-6
-            xni = MIN(99.D6, cig(1)*oig2*xri/am_i*lami**bm_i)
+            xni = MIN(499.D3, cig(1)*oig2*xri/am_i*lami**bm_i)
             niten(k) = (xni-ni1d(k)*rho(k))*odts*orho
            elseif (xDi.gt. 300.E-6) then
             lami = cie(2)/300.E-6
@@ -2685,8 +2688,8 @@
           niten(k) = -ni1d(k)*odts
          endif
          xni=MAX(0.,(ni1d(k) + niten(k)*dtsave)*rho(k))
-         if (xni.gt.99.E6) &
-                niten(k) = (99.E6-ni1d(k)*rho(k))*odts*orho
+         if (xni.gt.499.E3) &
+                niten(k) = (499.E3-ni1d(k)*rho(k))*odts*orho
 
 !..Rain tendency
          qrten(k) = qrten(k) + (prr_wau(k) + prr_rcw(k) &
@@ -3255,7 +3258,7 @@
            t3_vts = Kap0*csg(1)*ils1**cse(1)
            t4_vts = Kap1*Mrat**mu_s*csg(7)*ils2**cse(7)
            vts = rhof(k)*av_s * (t1_vts+t2_vts)/(t3_vts+t4_vts)
-           if (temp(k).gt. T_0) then
+           if (temp(k).gt. (T_0+0.1)) then
             vtsk(k) = MAX(vts*vts_boost(k),                             &
      &                vts*((vtrk(k)-vts*vts_boost(k))/(temp(k)-T_0)))
            else
@@ -3510,7 +3513,7 @@
             lami = cie(2)/300.E-6
            endif
            ni1d(k) = MIN(cig(1)*oig2*qi1d(k)/am_i*lami**bm_i,           &
-                         99.D6/rho(k))
+                         499.D3/rho(k))
          endif
          qr1d(k) = qr1d(k) + qrten(k)*DT
          nr1d(k) = MAX(R2/rho(k), nr1d(k) + nrten(k)*DT)
