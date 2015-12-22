@@ -245,7 +245,6 @@ CONTAINS
 
 !-----------------------------------------------------------------------
 !
-       write(0,*)' in scale-aware sas'
 
 
       if(present(shalconv)) then
@@ -429,12 +428,6 @@ CONTAINS
         ENDDO
       ENDDO
 
-           write(0,*)'dx2d=',dx2d(its,jts:jts+5)
-           write(0,*)'dy=',dy
-           write(0,*)'ps=',ps(its)
-           write(0,*)'del=',del(its,kts:kts+5)
-           write(0,*)'prsl=',prsl(its,kts:kts+5)
-           write(0,*)'dot=',dot(its,kts:kts+5)
 
 !      CALL SASCNVN(IM,IM,KX,JCAP,DELT,DEL,PRSL,PS,PHIL,                  &
 !                  QL,Q1,T1,U1,V1,RCS,CLDWRK,RN,KBOT,                    &
