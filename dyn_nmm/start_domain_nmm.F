@@ -159,7 +159,7 @@
       INTEGER :: I_M
 !
       INTEGER :: ILPAD2,IRPAD2,JBPAD2,JTPAD2
-      INTEGER :: ITS,ITE,JTS,JTE,KTS,KTE
+      INTEGER :: ITS,ITE,JTS,JTE,KTS,KTE, nhki, nhkj
 !
       INTEGER,DIMENSION(3) :: LPTOP
 !
@@ -1625,17 +1625,24 @@
 !
 !!!!	SHOULD grid%dwdt BE REDEFINED IF RESTRT?
 
+      if(grid%nhmove<0) then
+         nhki=1
+         nhkj=1
+      elseif(grid%nhmove>0) then
+         nhki=3
+         nhkj=6
+      endif
+
       IF((.NOT.RESTRT.OR.NEST).AND. allowed_to_read)THEN ! This is gopal's inclusion for moving nest
         DO K=KPS,KPE
           DO J=JFS,JFE
-             if(.not. grid%keepnh .or. .not. nestmove &
-                    .or. j<7 .or. j+6>jfe) then
+             if(grid%nhmove==0 .or. .not. nestmove .or. j<nhkj+1 .or. j+nhkj>jfe) then
                 DO I=IFS,IFE
                    grid%dwdt(I,J,K)=1.
                 ENDDO
              else
-                grid%dwdt(1:3,j,k)=1.
-                grid%dwdt(ife-2:ife,j,k)=1.
+                grid%dwdt(1:nhki,j,k)=1.
+                grid%dwdt(ife-nhki+1:ife,j,k)=1.
              endif
           ENDDO
         ENDDO
@@ -1687,28 +1694,44 @@
         enddo
 #endif
         if(nestmove) then
-           if(.not.grid%keepnh) then
-              call wrf_message('Discarding non-hydrostatic state at nest move.  Set keepnh=T to retain the state.')
-           else
+           if(grid%nhmove==0) then
+              call wrf_message('Discarding non-hydrostatic state at nest move.  Set nhmove=-1 to retain the state everywhere or nhmove=1 to discard only at the boundaries.')
+           elseif(grid%nhmove>0) then
               call wrf_message('Retaining non-hydrostatic state at nest move except at nest boundaries.')
+           else
+              call wrf_message('Retaining non-hydrostatic state at nest move.')
            endif
+        endif
+
+        if(grid%nhmove<0) then
+           nhki=1
+           nhkj=1
+        elseif(grid%nhmove>0) then
+           nhki=3
+           nhkj=6
         endif
 
         DO K=KPS,KPE
         DO J=JFS,JFE
-           if(.not.nestmove .or. .not. grid%keepnh .or. j<7 .or. j+6>=jfe) then
+           if(grid%nhmove==0 .or. .not.nestmove .or. j<nhkj+1 .or. j+nhkj>=jfe) then
               DO I=IFS,IFE
                  grid%pint(I,J,K)=grid%eta1(K)*grid%pdtop+grid%eta2(K)*grid%pdsl(I,J)+grid%pt
                  grid%z(I,J,K)=grid%pint(I,J,K)
                  grid%w(I,J,K)=0.
               ENDDO
            else
-              grid%pint(1:3,J,K)=grid%eta1(K)*grid%pdtop+grid%eta2(K)*grid%pdsl(I,J)+grid%pt
-              grid%z(1:3,J,K)=grid%pint(I,J,K)
-              grid%w(1:3,J,K)=0.
-              grid%pint(ife-2:ife,J,K)=grid%eta1(K)*grid%pdtop+grid%eta2(K)*grid%pdsl(I,J)+grid%pt
-              grid%z(ife-2:ife,J,K)=grid%pint(I,J,K)
-              grid%w(ife-2:ife,J,K)=0.
+              ! Rotated West boundary:
+              do I=1,nhki
+                 grid%pint(I,J,K)=grid%eta1(K)*grid%pdtop+grid%eta2(K)*grid%pdsl(I,J)+grid%pt
+                 grid%z(I,J,K)=grid%pint(I,J,K)
+                 grid%w(I,J,K)=0.
+              enddo
+              ! Rotated East boundary:
+              do I=ife-nhki+1,ife
+                 grid%pint(I,J,K)=grid%eta1(K)*grid%pdtop+grid%eta2(K)*grid%pdsl(I,J)+grid%pt
+                 grid%z(I,J,K)=grid%pint(I,J,K)
+                 grid%w(I,J,K)=0.
+              enddo
            endif
         ENDDO
         ENDDO
@@ -2100,7 +2123,8 @@
      &             ,grid%w0avg, RAINNC, RAINC, grid%raincv, RAINNCV               &
      &             ,SNOWNC, SNOWNCV, GRAUPELNC, GRAUPELNCV              &
      &             ,z_at_q, grid%qnwfa2d                                &
-     &             ,scalar_trans(ims,kms,jms,1),num_scalar              &
+!     &             ,scalar_trans(ims,kms,jms,1),num_scalar              &
+     &             ,scalar_trans,num_scalar              &
      &             ,grid%re_cloud, grid%re_ice, grid%re_snow            & ! G. Thompson
      &             ,grid%has_reqc,grid%has_reqi,grid%has_reqs           & ! G. Thompson
      &             ,NCA,GRID%SWRAD_SCAT                                 &
@@ -2160,6 +2184,15 @@
      &                lakedepth_default=config_flags%lakedepth_default, lake_min_elev=config_flags%lake_min_elev, lake_depth=grid%lake_depth,               & !lake
      &                lake_depth_flag=grid%LAKE_DEPTH_FLAG, use_lakedepth=grid%use_lakedepth,                                                      & !lake
      &                sf_surface_mosaic=config_flags%sf_surface_mosaic, mosaic_cat=config_flags%mosaic_cat, nlcat=1,     & ! Noah tiling
+     &                nssl_cccn=config_flags%nssl_cccn,                                 &
+     &                nssl_alphah=config_flags%nssl_alphah, nssl_alphahl=config_flags%nssl_alphahl,    &
+     &                nssl_cnoh=config_flags%nssl_cnoh, nssl_cnohl=config_flags%nssl_cnohl,        &
+     &                nssl_cnor=config_flags%nssl_cnor, nssl_cnos=config_flags%nssl_cnos,         &
+     &                nssl_rho_qh=config_flags%nssl_rho_qh, nssl_rho_qhl=config_flags%nssl_rho_qhl,    &
+     &                nssl_rho_qs=config_flags%nssl_rho_qs,                               &
+     &                nssl_ipelec=config_flags%nssl_ipelec,                               &
+     &                nssl_isaund=config_flags%nssl_isaund,                               & 
+!     &                P_QNN=P_QNN, F_QNN=F_QNN,                                           &
      &                MAXPATCH=1,ccn_conc=config_flags%ccn_conc, & ! CLM
      &                pin=grid%pin,ozmixm=grid%ozmixm &
      &                )
@@ -2397,6 +2430,21 @@
         ENDDO
         ENDDO
       ENDIF
+
+
+!
+! translate scalar_trans(i,k,j,n) back to scalar(i,j,k,n)
+        DO N=1,NUM_SCALAR
+!$omp parallel do                                                       &
+!$omp& private(i,j,k)
+          DO K=KMS,KME
+          DO J=JMS,JME
+          DO I=IMS,IME
+            SCALAR(I,J,K,N)=SCALAR_TRANS(I,K,J,N)
+          ENDDO
+          ENDDO
+          ENDDO
+        ENDDO
 !
       DEALLOCATE(SFULL)
       DEALLOCATE(SMID)
@@ -2450,6 +2498,7 @@
       DEALLOCATE(CLDFRA_TRANS)
       DEALLOCATE(CLDFRA_OLD)
       DEALLOCATE(Z_AT_Q)
+      DEALLOCATE(SCALAR_TRANS)
 #if 0
       DEALLOCATE(w0avg)
 #endif

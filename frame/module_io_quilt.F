@@ -1,7 +1,7 @@
 !WRF:DRIVER_LAYER:IO
 !
 #define DEBUG_LVL 50
-#define mpi_x_comm_size(i,j,k)  Mpi_Comm_Size ( i,j,k )
+!#define mpi_x_comm_size(i,j,k)  Mpi_Comm_Size ( i,j,k )
 
 ! Workaround for bug in the IBM MPI implementation.  Look near the
 ! bottom of this file for an explanation.
@@ -114,6 +114,15 @@ MODULE module_wrf_quilt
 #endif
 
   CONTAINS
+
+    SUBROUTINE mpi_x_comm_size(i,j,k)
+        IMPLICIT NONE
+        INTEGER, INTENT(IN) :: i
+        INTEGER, INTENT(OUT) :: j, k
+#if  defined(DM_PARALLEL)  &&  !defined( STUBMPI )
+        call Mpi_Comm_Size ( i,j,k )
+#endif
+    END SUBROUTINE mpi_x_comm_size
 
 #if  defined(DM_PARALLEL)  &&  !defined( STUBMPI )
     INTEGER FUNCTION get_server_id ( dhandle )
@@ -1293,6 +1302,11 @@ okay_to_w = .false.
                     CASE DEFAULT
                       Status = 0
                   END SELECT
+#ifdef CALL_SYNC_IN_IO_SERVERS
+                  call wrf_debug(1,'Call system("sync")')
+                  call system('sync')
+                  call wrf_debug(1,'Returned from sync.')
+#endif
                   ENDIF
 
 ! If desired, outputs a ready flag after quilting subroutine closes the data handle for history (wrfout) file.
@@ -2262,6 +2276,11 @@ okay_to_w = .false.
                      CASE DEFAULT
                         Status = 0
                      END SELECT
+#ifdef CALL_SYNC_IN_IO_SERVERS
+                     call wrf_debug(1,'Call system("sync")')
+                     call system('sync')
+                     call wrf_debug(1,'Returned from sync.')
+#endif
                   ENDIF
 
 ! Every I/O server handles the "open_for_write_begin" request.

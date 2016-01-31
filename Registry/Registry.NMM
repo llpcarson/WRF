@@ -392,8 +392,22 @@ state  real   ustar     ij    dyn_nmm   1    -     irh023d=(DownNear) "USTAR"   
 state  real   z0        ij    dyn_nmm   1    -     i01rh023d=(DownNear) "Z0"   "Thermal Roughness length"                    "m"
 state  real   mz0       ij    dyn_nmm   1    -       h        "MZ0"       "momentum Roughness length"                     "m"
 state  real     rc2d    ij    dyn_nmm   1    -       h        "RC2D"     "critical Richardson number" "m"
-state  real   dku3d    ijk    dyn_nmm   1    -       h        "DKU3D"     "Momentum Diffusivity" "m*m/s"
-state  real   dkt3d    ijk    dyn_nmm   1    -       h        "DKT3D"     "Thermal Diffusivity" "m*m/s"
+state  real   dku3d    ijk    dyn_nmm   1    -      rh023      "DKU3D"     "Momentum Diffusivity" "m*m/s"
+state  real   dkt3d    ijk    dyn_nmm   1    -      rh023      "DKT3D"     "Thermal Diffusivity" "m*m/s"
+
+state  real   SCALEFUN  ij    dyn_nmm   1    -     rh023       "SCALEFUN"  "CNV Mass Scale function(0-1)"        " "
+state  real   SCALEFUN1 ij    dyn_nmm   1    -     rh023       "SCALEFUN1"  "CNV Mass Scale function 1(0-1)"        " "
+state  real   DTHCUDT  ijk    dyn_nmm   1    -      rh023      "DTHCUDT"     "TH tendency due to CU" "K/s"
+state  real   DQVCUDT  ijk    dyn_nmm   1    -      rh023      "DQVCUDT"     "QV tendency due to CU" "kg/kg/s"
+state  real   DQRCUDT  ijk    dyn_nmm   1    -      rh023      "DQRCUDT"     "QR tendency due to CU" "kg/kg/s"
+state  real   DQCCUDT  ijk    dyn_nmm   1    -      rh023      "DQCCUDT"     "QC tendency due to CU" "Kg/kg/s"
+state  real   DQICUDT  ijk    dyn_nmm   1    -      rh023      "DQICUDT"     "QI tendency due to CU" "Kg/kg/s"
+state  real   DQSCUDT  ijk    dyn_nmm   1    -      rh023      "DQSCUDT"     "QS tendency due to CU" "Kg/kg/s"
+state  real   DTHBLDT  ijk    dyn_nmm   1    -      rh023      "DTHBLDT"     "TH tendency due to PBL" "K/s"
+state  real   DQVBLDT  ijk    dyn_nmm   1    -      rh023      "DQVBLDT"     "QV tendency due to PBL" "Kg/kg/s"
+state  real   DUBLDT   ijk    dyn_nmm   1    -      rh023      "DUBLDT"     "U tendency due to PBL" "m/s/s"
+state  real   DVBLDT   ijk    dyn_nmm   1    -      rh023      "DVBLDT"     "V tendency due to PBL" "m/s/s"
+
 state  real   hpbl2d    ij    dyn_nmm   1    -     irh        "HPBL2D"     "HEIGHT OF PBL from new GFS pbl" "m"
 state  real   heat2d    ij    dyn_nmm   1    -     irh        "HEAT2D"     "" ""
 state  real   evap2d    ij    dyn_nmm   1    -     irh        "EVAP2D"     "" ""
@@ -825,6 +839,7 @@ state   real    qnh            ijkftb  scalar      1         m     i01h023ru=(Up
 state   real    qnn            ijkftb  scalar      1         m     i01h023ru=(UpMass:@ECopy,0.0)d=(DownMass:@ECopy,0.0)f=(BdyMass:@ECopy,0.0)       "QNCCN"            "CCN Number concentration" "# kg(-1)"
 state   real    qnc            ijkftb  scalar      1         m     i01h023ru=(UpMass:@ECopy,0.0)d=(DownMass:@ECopy,0.0)f=(BdyMass:@ECopy,0.0)       "QNCLOUD"          "cloud water Number concentration" "# kg(-1)"
 state   real    qvolg          ikjftb  scalar      1         m     i01h023ru=(UpMassIKJ:@ECopy,0.0)d=(DownMassIKJ:@ECopy,0.0)f=(BdyMassIKJ:@ECopy,0.0)       "QVGRAUPEL"        "Graupel Particle Volume" "m(3) kg(-1)"
+state   real    qvolh          ikjftb  scalar      1         m     i01h023ru=(UpMassIKJ:@ECopy,0.0)d=(DownMassIKJ:@ECopy,0.0)f=(BdyMassIKJ:@ECopy,0. 0)       "QVHAIL"        "Hail Particle Volume" "m(3) kg(-1)"
 state   real    qnwfa          ikjftb  scalar      1         m     i01h023ru=(UpMassIKJ:@ECopy,0.0)d=(DownMassIKJ:@ECopy,0.0)f=(BdyMassIKJ:@ECopy,0.0)       "QNWFA"            "water-friendly aerosol number con" "# kg(-1)"
 state   real    qnifa          ikjftb  scalar      1         m     i01h023ru=(UpMassIKJ:@ECopy,0.0)d=(DownMassIKJ:@ECopy,0.0)f=(BdyMassIKJ:@ECopy,0.0)       "QNIFA"            "ice-friendly aerosol number con"   "# kg(-1)"
 state   real    qndrop         ikjftb  scalar      1         m     i01h023ru=(UpMassIKJ:@ECopy,0.0)d=(DownMassIKJ:@ECopy,0.0)f=(BdyMassIKJ:@ECopy,0.0)       "QNDROP"        "Droplet number mixing ratio"        "# kg-1"
@@ -854,7 +869,6 @@ state   real    dfi_qnwfa      ikjftb  dfi_scalar      1         m     \
    rsu=(UpMassIKJ:@ECopy,0.0)d=(DownMassIKJ:@ECopy,0.0)f=(BdyMassIKJ:@ECopy,0.0)    "DFI_QNWFA"     "DFI water-friendly aerosol number con" "# kg(-1)"
 state   real    dfi_qnifa      ikjftb  dfi_scalar      1         m     \
    rsu=(UpMassIKJ:@ECopy,0.0)d=(DownMassIKJ:@ECopy,0.0)f=(BdyMassIKJ:@ECopy,0.0)    "DFI_QNIFA"     "DFI ice-friendly aerosol number con"   "# kg(-1)"
-state   real    qvolh          ikjftb  scalar      1         m     i01hru=(UpMassIKJ:@ECopy,0.0)d=(DownMassIKJ:@ECopy,0.0)f=(BdyMassIKJ:@ECopy,0. 0)       "QVHAIL"        "Hail Particle Volume" "m(3) kg(-1)"
 
 #-----------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -1331,6 +1345,20 @@ rconfig   logical   use_prep_hybrid namelist,domains    1              .false.  
 # Physics
 rconfig   logical  force_read_thompson   namelist,physics      1           .false.
 rconfig   logical  write_thompson_tables   namelist,physics     1           .true.
+rconfig   real     nssl_cccn              namelist,physics      max_domains  0.5e9    rh       "Base CCN concentration for NSSL microphysics"  ""      ""
+rconfig   real     nssl_alphah            namelist,physics      max_domains   0       rh       "Graupel PSD shape paramter"  ""      ""
+rconfig   real     nssl_alphahl           namelist,physics      max_domains   1       rh       "Hail PSD shape paramter"  ""      ""
+rconfig   real     nssl_cnoh              namelist,physics      max_domains  4.e5     rh       "Graupel intercept paramter"  ""      ""
+rconfig   real     nssl_cnohl             namelist,physics      max_domains  4.e4     rh       "Hail intercept paramter"  ""      ""
+rconfig   real     nssl_cnor              namelist,physics      max_domains  8.e5     rh       "Rain intercept paramter"  ""      ""
+rconfig   real     nssl_cnos              namelist,physics      max_domains  3.e6     rh       "Snow intercept paramter"  ""      ""
+rconfig   real     nssl_rho_qh            namelist,physics      max_domains  500.     rh       "Graupel particle density"  ""      ""
+rconfig   real     nssl_rho_qhl           namelist,physics      max_domains  900.     rh       "Hail particle density"  ""      ""
+rconfig   real     nssl_rho_qs            namelist,physics      max_domains  100.     rh       "Snow particle density"  ""      ""
+rconfig   integer  elec_physics           namelist,physics      1            0       irh       "elec_physics"            ""      ""
+# Explicit lightning (for EM core, but here for code compatibility
+rconfig   integer  nssl_ipelec            namelist,physics      max_domains   0       rh       "Electrification selection"  ""      ""
+rconfig   integer  nssl_isaund            namelist,physics      1             12      rh       "Charge separation selection"  ""      ""
 
 #for HWRF:
 rconfig   integer     mp_physics          namelist,physics	max_domains    0       rh0123       "mp_physics"            ""      ""
@@ -1527,7 +1555,11 @@ rconfig   real    c_k                     namelist,dynamics     max_domains    0
 rconfig   real    smdiv                   namelist,dynamics	max_domains    0.      h    "smdiv"         ""      ""
 rconfig   real    emdiv                   namelist,dynamics	max_domains    0.      h    "emdiv"         ""      ""
 rconfig   real    epssm                   namelist,dynamics	max_domains    .1      h    "epssm"         ""      ""
-rconfig   logical keepnh                  namelist,dynamics     max_domains  .true.   rh   "KEEPH"         "When .false., non-hydrostatic state is discarded at nest move."        ""
+<<<<<<< .working
+rconfig   integer nhmove                  namelist,dynamics     max_domains    -1   rh   "NHMOVE"         "Action when nest move: 0=discard non-hydro state -1=keep nh state everywhere 1=keep except near nest edge" ""
+=======
+rconfig   logical keepnh                  namelist,dynamics     max_domains  .true.   rh   "KEEPNH"         "When .false., non-hydrostatic state is discarded at nest move."        ""
+>>>>>>> .merge-right.r8972
 rconfig   logical non_hydrostatic         namelist,dynamics	max_domains  .true.   irh  "non_hydrostatic"    ""   ""
 rconfig   integer time_step_sound         namelist,dynamics	max_domains    10      h     "time_step_sound"               ""      ""
 rconfig   integer     h_mom_adv_order     namelist,dynamics	max_domains    3       rh       "h_mom_adv_order"               ""      ""
@@ -1729,6 +1761,7 @@ package   ysuscheme      bl_pbl_physics==1           -             -
 package   myjpblscheme   bl_pbl_physics==2           -             -
 package   gfsscheme      bl_pbl_physics==3           -             state:hpbl2d,heat2d,evap2d,rc2d
 package   gfs2011scheme  bl_pbl_physics==83          -             state:hpbl2d,heat2d,evap2d
+package   gfsedmfscheme  bl_pbl_physics==93          -             state:hpbl2d,heat2d,evap2d
 package   qnsepblscheme  bl_pbl_physics==4           -             -
 package   acmpblscheme   bl_pbl_physics==7           -             -
 package   boulacscheme   bl_pbl_physics==8           -             - 
@@ -1743,6 +1776,7 @@ package   bmjscheme      cu_physics==2               -             -
 package   gdscheme       cu_physics==93              -             -
 package   sasscheme      cu_physics==84              -             state:hpbl2d,heat2d,evap2d
 package   meso_sas       cu_physics==85              -             state:hpbl2d,heat2d,evap2d
+package   scalesasscheme cu_physics==86              -             state:hpbl2d,heat2d,evap2d
 package   osasscheme     cu_physics==4               -             state:randstate1,randstate2,randstate3,randstate4,random
 package   g3scheme       cu_physics==5               -             -
 package   gfscheme       cu_physics==3               -             -

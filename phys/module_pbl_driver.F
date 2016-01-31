@@ -54,6 +54,7 @@ CONTAINS
 #endif
 #if (HWRF==1)
                  ,coef_ric_l,coef_ric_s,gfs_alpha                  &
+                 ,pert_pbl, ens_random_seed, ens_pblamp            &
 #endif
                  ,ids,ide, jds,jde, kds,kde                        &
                  ,ims,ime, jms,jme, kms,kme                        &
@@ -123,7 +124,7 @@ CONTAINS
    USE module_state_description, ONLY :                            &
                    YSUSCHEME,MRFSCHEME,GFSSCHEME,MYJPBLSCHEME,ACMPBLSCHEME &
                    , QNSEPBLSCHEME, p_qi,param_first_scalar &
-                   , TEMFPBLSCHEME, GFS2011SCHEME                         &
+                   , TEMFPBLSCHEME, GFS2011SCHEME,GFSEDMFSCHEME            &
                    , CAMUWPBLSCHEME                                       &
                    , FITCHSCHEME, SHINHONGSCHEME                          &
                    , GBMPBLSCHEME, MYJSFCSCHEME
@@ -140,6 +141,7 @@ CONTAINS
    USE module_bl_mrf
    USE module_bl_gfs
    USE module_bl_gfs2011, only: bl_gfs2011
+   USE module_bl_gfsedmf, only: bl_gfsedmf
    USE module_bl_acm
    USE module_bl_gwdo
    USE module_bl_myjurb
@@ -375,11 +377,11 @@ CONTAINS
    REAL, DIMENSION( ims:ime , jms:jme , kms:kme ),                         &
                    INTENT(OUT) ::  DKU3D,DKT3D                      !Kwon duffusivity
 #endif
-#ifdef HWRF
+#if (HWRF==1)
    REAL,       INTENT(IN)         ::   VAR_RIC                       !Kwon for variable Ric
-
-#endif
-#if defined(HWRF)
+   integer,intent(in) :: ens_random_seed
+   real,intent(in) :: ens_pblamp
+   logical,intent(in) :: pert_pbl
    REAL,       INTENT(IN)         ::   gfs_alpha,coef_ric_l,coef_ric_s
 #endif
 
@@ -524,7 +526,9 @@ CONTAINS
 
    REAL,    DIMENSION( ims:ime , jms:jme ), &
         &OPTIONAL, INTENT(IN) ::  &
-        & qcg, rmol, ch
+        & qcg,  ch
+   REAL,    DIMENSION( ims:ime , jms:jme ), &
+        &OPTIONAL, INTENT(INOUT) ::  rmol
    
 
 
@@ -1267,13 +1271,16 @@ CONTAINS
 #if (NMM_CORE==1)
               ,DISHEAT=DISHEAT                                      &
 #endif
-#if defined(HWRF)
+#if (HWRF==1)
               ,ALPHA=gfs_alpha                                      &
               ,HPBL2D=HPBL2D, EVAP2D=EVAP2D, HEAT2D=HEAT2D          &   !Kwon add FOR SHAL. CON.
               ,VAR_RIC=VAR_RIC                                      &   !Kwon for variable Ric
               ,U10=U10,V10=V10,ZNT=ZNT,MZNT=MZNT,RC2D=RC2D          &   !Kwon for variable Ric
               ,DKU3D=DKU3D,DKT3D=DKT3D                              &
               ,coef_ric_l=coef_ric_l,coef_ric_s=coef_ric_s,xland=xland    &
+              ,pert_pbl=pert_pbl                                    &
+              ,ens_random_seed=ens_random_seed                      &
+              ,ens_pblamp=ens_pblamp                                &
 #endif
               ,P_QI=p_qi,P_FIRST_SCALAR=param_first_scalar          &
               ,IDS=ids,IDE=ide,JDS=jds,JDE=jde,KDS=kds,KDE=kde      &
@@ -1341,6 +1348,58 @@ CONTAINS
            ENDIF
 #endif
 
+#if (NMM_CORE==1)
+      CASE (GFSEDMFSCHEME)
+           IF ( PRESENT( qv_curr )  .AND. PRESENT( qc_curr )  .AND. &
+                PRESENT( rqvblten ) .AND. PRESENT( rqcblten ) .AND. &
+                                                        .TRUE.  ) THEN
+             CALL wrf_debug(100,'in GFS')
+             CALL bl_gfsedmf(                                       &
+               U3D=u_phytmp,V3D=v_phytmp                            &
+              ,TH3D=th_phy,T3D=t_phy                                &
+              ,QV3D=qv_curr,QC3D=qc_curr,QI3D=qi_curr               &
+              ,P3D=p_phy,PI3D=pi_phy                                &
+              ,RUBLTEN=rublten,RVBLTEN=rvblten,RTHBLTEN=rthblten    &
+              ,RQVBLTEN=rqvblten,RQCBLTEN=rqcblten                  &
+              ,RQIBLTEN=rqiblten                                    &
+              ,CP=cp,G=g,ROVCP=rcp,R=r_d,ROVG=rovg                  &
+              ,P_QI=p_qi,P_FIRST_SCALAR=param_first_scalar          &
+              ,DZ8W=dz8w,z=z,PSFC=psfc                              &
+              ,UST=ust,PBL=pblh,PSIM=psim,PSIH=psih                 &
+              ,HFX=hfx,QFX=qfx,TSK=tskold,GZ1OZ0=gz1oz0             &
+              ,WSPD=wspd,BR=br                                      &
+              ,DT=dtbl,KPBL2D=kpbl,EP1=ep_1,KARMAN=karman           &
+#if (NMM_CORE==1)
+              ,DISHEAT=DISHEAT                                      &
+#endif
+              ,RTHRATEN=RTHRATEN                    &
+              ,HPBL2D=HPBL2D, EVAP2D=EVAP2D, HEAT2D=HEAT2D          &   
+              
+              ,U10=u10,V10=v10,ZNT=mznt                             &
+              ,DKU3D=dku3d,DKT3D=dkt3d                             &
+              ,VAR_RIC=VAR_RIC                                      &  
+              ,coef_ric_l=coef_ric_l,coef_ric_s=coef_ric_s          &
+              ,ALPHA=gfs_alpha                                      &
+              ,xland=xland                                          &
+              ,IDS=ids,IDE=ide,JDS=jds,JDE=jde,KDS=kds,KDE=kde      &
+              ,IMS=ims,IME=ime,JMS=jms,JME=jme,KMS=kms,KME=kme      &
+              ,ITS=its,ITE=ite,JTS=jts,JTE=jte,KTS=kts,KTE=kte      &
+                                                                    )
+           ELSE
+               WRITE ( message , FMT = '(A,4(L1,1X))' )             &
+                 'present: '//                                      &
+                 'qv_curr, '//                                      &
+                 'qc_curr, '//                                      &
+                 'rqvblten, '//                                     &
+                 'rqcblten = ',                                     &
+                  PRESENT( qv_curr ) ,                              &
+                  PRESENT( qc_curr ) ,                              &
+                  PRESENT( rqvblten ) ,                             &
+                  PRESENT( rqcblten )
+               CALL wrf_debug(0,message)
+               CALL wrf_error_fatal('Lack arguments to call GFS edmf pbl')
+           ENDIF
+#endif
       CASE (MYJPBLSCHEME)
            IF ( PRESENT( qv_curr )  .AND. PRESENT( qc_curr )  .AND. &
                 PRESENT( rqvblten ) .AND. PRESENT( rqcblten ) .AND. &
@@ -1505,7 +1564,7 @@ CONTAINS
               ,UST=UST, HFX=HFX, QFX=QFX, TSK=tsk                               &
               ,PSFC=PSFC, EP1=EP_1, G=g, ROVCP=rcp,RD=r_D,CPD=cp                 &
               ,PBLH=pblh, KPBL2D=kpbl, EXCH_H=exch_h, REGIME=regime              &
-              ,GZ1OZ0=gz1oz0,WSPD=wspd,PSIM=psim, MUT=mut                        &
+              ,GZ1OZ0=gz1oz0,WSPD=wspd,PSIM=psim, MUT=mut, RMOL=rmol             &
               ,RUBLTEN=rublten,RVBLTEN=rvblten,RTHBLTEN=rthblten                 &
               ,RQVBLTEN=rqvblten,RQCBLTEN=rqcblten,RQIBLTEN=rqiblten             &
               ,IDS=ids,IDE=ide,JDS=jds,JDE=jde,KDS=kds,KDE=kde                   &

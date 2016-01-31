@@ -917,16 +917,6 @@ CONTAINS
          allocate(asyaer_sw(1, 1, 1, 1))
       ENDIF
    ENDIF
-   !..Allocate the dummy arrays in the event we didn't need these.
-   IF ( (.NOT. (aer_opt.EQ.2 .OR. aer_opt.EQ.3)) .AND.                  &
-               (sw_physics.eq.GODDARDSWSCHEME .OR.                      &
-                sw_physics.eq.RRTMG_SWSCHEME .OR.                       &
-                sw_physics.eq.RRTMG_SWSCHEME_FAST)) THEN
-      allocate(tauaer_sw(1, 1, 1, 1))
-      allocate(ssaaer_sw(1, 1, 1, 1))
-      allocate(asyaer_sw(1, 1, 1, 1))
-   ENDIF
-
    ! Stubs to ensure these variables are not passed in unallocated:
    if(.not.allocated(tauaer_sw)) allocate(tauaer_sw(1, 1, 1, 1))
    if(.not.allocated(ssaaer_sw)) allocate(ssaaer_sw(1, 1, 1, 1))
@@ -4505,7 +4495,7 @@ END SUBROUTINE aer_p_int
       END DO
 
       DO j=jts,jte
-         DO k=kts,kte-1
+         DO k=kts,kte
             DO i=its,ite
                rhoa = p_phy(i,k,j)/(287.*t_phy(i,k,j))
                t_idx = MAX(1, MIN(nint(10.999-0.0333*t_phy(i,k,j)),4))

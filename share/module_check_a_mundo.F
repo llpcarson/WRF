@@ -43,7 +43,7 @@
 
       LOGICAL :: exists
       LOGICAL , EXTERNAL :: wrf_dm_on_monitor
-      INTEGER :: i, oops
+      INTEGER :: i, oops, d1_value
       LOGICAL :: km_opt_already_done , diff_opt_already_done
 
 !-----------------------------------------------------------------------
@@ -153,14 +153,14 @@
 !-----------------------------------------------------------------------
 ! Check that NSSL microphysics is not allowed for WRF-NMM run 
 !-----------------------------------------------------------------------
-#if (NMM_CORE == 1) || (HWRF == 1)
+#if (NMM_CORE == 1) || (HWRF == 1) 
       DO i = 1, model_config_rec % max_dom
          IF ( model_config_rec % mp_physics(i) == nssl_2mom .OR. &
               model_config_rec % mp_physics(i) == nssl_2momccn .OR. & 
               model_config_rec % mp_physics(i) == nssl_1mom .OR. & 
               model_config_rec % mp_physics(i) == nssl_1momlfo .OR. & 
-              model_config_rec % mp_physics(i) == nssl_2momg  ) THEN 
-            wrf_err_message = '--- ERROR: NSSL scheme cannot run with WRF-NMM '
+              model_config_rec % mp_physics(i) == nssl_2momg ) THEN 
+            wrf_err_message = '--- ERROR: Chosen microphysics scheme cannot run with WRF-NMM '
             CALL wrf_message ( wrf_err_message )
             wrf_err_message = '--- Fix mp_physics in namelist.input '
             CALL wrf_error_fatal ( TRIM( wrf_err_message ) )
@@ -315,6 +315,18 @@
             CALL wrf_message ( 'Linear vertical interpolation is recommended with input vertical resolution this coarse, changing lagrange_order to 1' )
             model_config_rec%lagrange_order = 1
             END IF
+
+!-----------------------------------------------------------------------
+! Check for domain consistency for urban options.
+!-----------------------------------------------------------------------
+
+      d1_value = model_config_rec%sf_urban_physics(1)
+      DO i = 2, model_config_rec % max_dom
+         IF ( model_config_rec%sf_urban_physics(i) /= d1_value ) THEN
+            WRITE(wrf_err_message, * ) '--- ERROR:   sf_urban_physics option must be identical in each domain'
+            CALL wrf_error_fatal ( TRIM ( wrf_err_message ) )
+         ENDIF
+      END DO
 
 !-----------------------------------------------------------------------
 ! Check for consistency in the Noah-MP options

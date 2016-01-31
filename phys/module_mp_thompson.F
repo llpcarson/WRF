@@ -1325,16 +1325,16 @@
 
          IF (has_reqc.ne.0 .and. has_reqi.ne.0 .and. has_reqs.ne.0) THEN
           do k = kts, kte
-             re_qc1d(k) = 2.49E-6
-             re_qi1d(k) = 4.99E-6
-             re_qs1d(k) = 9.99E-6
+             re_qc1d(k) = 2.51E-6
+             re_qi1d(k) = 10.01E-6
+             re_qs1d(k) = 10.01E-6
           enddo
           call calc_effectRad (t1d, p1d, qv1d, qc1d, nc1d, qi1d, ni1d, qs1d,  &
                       re_qc1d, re_qi1d, re_qs1d, kts, kte)
           do k = kts, kte
-             re_cloud(i,k,j) = MAX(2.49E-6, MIN(re_qc1d(k), 50.E-6))
-             re_ice(i,k,j)   = MAX(4.99E-6, MIN(re_qi1d(k), 125.E-6))
-             re_snow(i,k,j)  = MAX(9.99E-6, MIN(re_qs1d(k), 999.E-6))
+             re_cloud(i,k,j) = MAX( 2.51E-6, MIN(re_qc1d(k), 50.E-6))
+             re_ice(i,k,j)   = MAX(10.01E-6, MIN(re_qi1d(k), 125.E-6))
+             re_snow(i,k,j)  = MAX(10.01E-6, MIN(re_qs1d(k), 999.E-6))
           enddo
          ENDIF
 
@@ -1641,8 +1641,8 @@
             lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
             ilami = 1./lami
             xDi = (bm_i + mu_i + 1.) * ilami
-            if (xDi.lt. 20.E-6) then
-             lami = cie(2)/20.E-6
+            if (xDi.lt. 5.E-6) then
+             lami = cie(2)/5.E-6
              ni(k) = MIN(499.D3, cig(1)*oig2*ri(k)/am_i*lami**bm_i)
             elseif (xDi.gt. 300.E-6) then
              lami = cie(2)/300.E-6
@@ -2673,8 +2673,8 @@
            lami = (am_i*cig(2)*oig1*xni/xri)**obmi
            ilami = 1./lami
            xDi = (bm_i + mu_i + 1.) * ilami
-           if (xDi.lt. 20.E-6) then
-            lami = cie(2)/20.E-6
+           if (xDi.lt. 5.E-6) then
+            lami = cie(2)/5.E-6
             xni = MIN(499.D3, cig(1)*oig2*xri/am_i*lami**bm_i)
             niten(k) = (xni-ni1d(k)*rho(k))*odts*orho
            elseif (xDi.gt. 300.E-6) then
@@ -3256,7 +3256,7 @@
            t3_vts = Kap0*csg(1)*ils1**cse(1)
            t4_vts = Kap1*Mrat**mu_s*csg(7)*ils2**cse(7)
            vts = rhof(k)*av_s * (t1_vts+t2_vts)/(t3_vts+t4_vts)
-           if (temp(k).gt. T_0) then
+           if (temp(k).gt. (T_0+0.1)) then
             vtsk(k) = MAX(vts*vts_boost(k),                             &
      &                vts*((vtrk(k)-vts*vts_boost(k))/(temp(k)-T_0)))
            else
@@ -3505,8 +3505,8 @@
            lami = (am_i*cig(2)*oig1*ni1d(k)/qi1d(k))**obmi
            ilami = 1./lami
            xDi = (bm_i + mu_i + 1.) * ilami
-           if (xDi.lt. 20.E-6) then
-            lami = cie(2)/20.E-6
+           if (xDi.lt. 5.E-6) then
+            lami = cie(2)/5.E-6
            elseif (xDi.gt. 300.E-6) then
             lami = cie(2)/300.E-6
            endif
@@ -3590,6 +3590,11 @@
               IF( force_read_thompson ) THEN
                 CALL wrf_error_fatal("Error opening qr_acr_qg.dat. Aborting because force_read_thompson is .true.")
               ENDIF
+            ENDIF
+         ELSE
+            INQUIRE(63,opened=lopen)
+            IF (lopen) THEN
+              CLOSE(63)
             ENDIF
           ENDIF
         ELSE
@@ -5020,7 +5025,7 @@
       do k = kts, kte
          if (ri(k).le.R1 .or. ni(k).le.R2) CYCLE
          lami = (am_i*cig(2)*oig1*ni(k)/ri(k))**obmi
-         re_qi1d(k) = MAX(5.01E-6, MIN(SNGL(0.5D0 * DBLE(3.+mu_i)/lami), 125.E-6))
+         re_qi1d(k) = MAX(10.01E-6, MIN(SNGL(0.5D0 * DBLE(3.+mu_i)/lami), 125.E-6))
       enddo
       endif
 
