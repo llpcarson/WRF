@@ -38,19 +38,23 @@ subroutine da_calculate_gradj(it, iter, cv_size, cv_size_jb, cv_size_je, cv_size
 #endif
    real             :: grad_jo(cv_size)
    real             :: grad_jb(cv_size)
+   real             :: grad_jm(cv_size)
    real             :: grad_je(cv_size)
    real             :: grad_jd(cv_size)
    real             :: grad_jp(cv_size)
    real             :: grad_js(cv_size)
    real             :: grad_jl(cv_size)
-   real             :: gnorm_j, gnorm_jo, gnorm_jb, gnorm_je, gnorm_jd, gnorm_jp, gnorm_js, gnorm_jl
+   real             :: gnorm_j, gnorm_jo, gnorm_jb, gnorm_je, gnorm_jd, gnorm_jp,&
+                       gnorm_js, gnorm_jl, gnorm_jm
    logical          :: jcdf_flag
 
    ! Variables for VarBC background constraint
-   integer                           :: jp_start, jp_end       ! Start/end indices of Jp.
-   integer                           :: inst, ichan, npred, ipred, id
-   real                              :: bgerr
-   integer                           :: n
+   integer           :: jp_start, jp_end       ! Start/end indices of Jp.
+   integer           :: inst, ichan, npred, ipred, id
+   real              :: bgerr
+   integer           :: n
+
+   real              :: inc_div(ims:ime,jms:jme,kms:kme) ! Temp storage
 
    if (trace_use) call da_trace_entry("da_calculate_gradj")
 
@@ -76,6 +80,9 @@ subroutine da_calculate_gradj(it, iter, cv_size, cv_size_jb, cv_size_je, cv_size
    grad_jp = 0.0
    grad_js = 0.0
    grad_jl = 0.0
+   grad_jm = 0.0
+   
+   inc_div = 0.
 
    jcdf_flag = .false.
 
@@ -181,10 +188,24 @@ subroutine da_calculate_gradj(it, iter, cv_size, cv_size_jb, cv_size_je, cv_size
    !-------------------------------------------------------------------------
    if (cv_size_jl > 0) grad_jl(jl_start:jl_end) = cv(jl_start:jl_end)
 
+   !-------------------------------------------------------------------------
+   ! [6.1] calculate grad_v (jm):
+   !-------------------------------------------------------------------------
+   if(use_divc) then
+      call da_transform_vtox(grid, cv_size, xbx, be, grid%ep, cv, grid%vv, grid%vp)
+      call da_transform_xtoxa(grid)
+      call da_divergence_constraint(grid%xb, grid%xa%u, grid%xa%v, inc_div)
+      inc_div = inc_div/divc_factor
+      call da_zero_x(grid%xa)
+      call da_divergence_constraint_adj(grid, grid%xa%u, grid%xa%v, inc_div)
+      call da_transform_xtoxa_adj(grid)
+      call da_transform_vtox_adj(grid, cv_size, xbx, be, grid%ep, grid%vp, grid%vv, grad_jm)
+   endif
+
    !--------------------------------------------------------------------------------------------------
    ! [7.0] calculate grad_v (j) = grad_v (jb) + grad_v (jo) + grad_v (je) + grad_v (jd) + grad_v (jp) + grad_v (js) + grad_v (jl)
    !--------------------------------------------------------------------------------------------------   
-   grad = grad_jo + grad_jb + grad_je + grad_jd + grad_jp + grad_js + grad_jl
+   grad = grad_jo + grad_jb + grad_je + grad_jd + grad_jp + grad_js + grad_jl + grad_jm
 
    !-------------------------------------------------------------------------
    ! [8.0] write Gradient:
@@ -198,10 +219,11 @@ subroutine da_calculate_gradj(it, iter, cv_size, cv_size_jb, cv_size_je, cv_size
       gnorm_jp = sqrt(da_dot_cv(cv_size, grad_jp, grad_jp, grid, mz, jp_start, jp_end))
       gnorm_js = sqrt(da_dot_cv(cv_size, grad_js, grad_js, grid, mz))
       gnorm_jl = sqrt(da_dot_cv(cv_size, grad_jl, grad_jl, grid, mz))
- 
+      gnorm_jm = sqrt(da_dot_cv(cv_size, grad_jm, grad_jm, grid, mz))
+
       if (rootproc) &
-         write(grad_unit,fmt='(2x,i2,1x,e10.3,2x,i4,8(1x,f10.3))') & 
-               it, eps(it), iter, gnorm_j, gnorm_jb, gnorm_jo, gnorm_je, gnorm_jd, gnorm_jp, gnorm_js, gnorm_jl
+         write(grad_unit,fmt='(2x,i2,1x,e10.3,2x,i4,9(1x,f10.3))') & 
+               it, eps(it), iter, gnorm_j, gnorm_jb, gnorm_jo, gnorm_je, gnorm_jd, gnorm_jp, gnorm_js, gnorm_jl, gnorm_jm
    end if
    if (trace_use) call da_trace_exit("da_calculate_gradj")
 
