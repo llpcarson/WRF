@@ -1745,9 +1745,11 @@ CONTAINS
 !                i, zot(i),zoc(i), cdm(i),cdm2(i), tsg(i),wind(i)
 #if HWRF==1
 ! randomly perturb the Cd
-        if( pert_Cd_local ) then
+        if( pert_Cd_local .and. ens_random_seed .gt. 0 ) then
         rr=2.0*ens_Cdamp_local*ran1(ens_random_seed_local)-ens_Cdamp_local
+!        print*, "zhang cd a=", cdm(i)
         cdm(i) = cdm(i) *(1.0+rr)
+!        print*, "zhang cd b=", cdm(i)
         endif
 #endif
 
