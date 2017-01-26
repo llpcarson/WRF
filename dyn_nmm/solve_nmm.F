@@ -361,7 +361,7 @@
 
       ADVECT_Q2=.TRUE.
       if(CONFIG_FLAGS%BL_PBL_PHYSICS == GFSSCHEME .OR. &
-         CONFIG_FLAGS%BL_PBL_PHYSICS == GFS2011SCHEME) THEN
+         CONFIG_FLAGS%BL_PBL_PHYSICS == GFSEDMFSCHEME) THEN
          ADVECT_Q2=.FALSE.
       endif
 
@@ -1204,16 +1204,16 @@
             ims,ime,jms,jme,kms,kme, &
             its,ite,jts,jte,kts,kte)
 
-      CALL EPS(grid%ntsd,GRID%DT,grid%hydro,grid%dx_nmm,grid%dy_nmm,grid%fad                     &
-     &        ,grid%aeta1,grid%deta1,grid%deta2,grid%pdtop,grid%pt                                     &
-     &        ,grid%hbm2,grid%hbm3                                                &
-     &        ,grid%pdsl,grid%pdslo,grid%pint,grid%rtop,grid%petdt,grid%pdwdt                         &
-     &        ,grid%dwdt,grid%dwdtmn,grid%dwdtmx                                       &
-     &        ,grid%fns,grid%few,grid%fne,grid%fse                                          &
-     &        ,grid%t,grid%u,grid%v,grid%w,grid%w_tot,grid%q,grid%cwm                                            &
-     &        ,grid%def3d,grid%hdac,grid%baro                                              &
-     &        ,WP,dwdt_damping_lev                                                 &
-     &        ,grid%ihe,grid%ihw,grid%ive,grid%ivw                                          &
+      CALL EPS(grid%ntsd,GRID%DT,grid%hydro,grid%dx_nmm,grid%dy_nmm,grid%fad  &
+     &        ,grid%aeta1,grid%deta1,grid%deta2,grid%pdtop,grid%pt      &
+     &        ,grid%hbm2,grid%hbm3                                      &
+     &        ,grid%pdsl,grid%pdslo,grid%pint,grid%rtop,grid%petdt,grid%pdwdt &
+     &        ,grid%dwdt,grid%dwdtmn,grid%dwdtmx                        &
+     &        ,grid%fns,grid%few,grid%fne,grid%fse                      &
+     &        ,grid%t,grid%u,grid%v,grid%w,grid%w_tot,grid%q,grid%cwm   &
+     &        ,grid%def3d,grid%hdac,grid%baro                           &
+     &        ,WP,dwdt_damping_lev                                      &
+     &        ,grid%ihe,grid%ihw,grid%ive,grid%ivw                      &
      &        ,IDS,IDF,JDS,JDF,KDS,KDE                                  &
      &        ,IMS,IME,JMS,JME,KMS,KME                                  &
      &        ,ITS,ITE,JTS,JTE,KTS,KTE)
@@ -1623,7 +1623,7 @@
      &            ,grid%czen,grid%czmean,grid%sigt4,grid%rlwin,grid%rswin,grid%radot                 &
      &            ,grid%pd,grid%res,grid%pint,grid%t,grid%q,grid%cwm,grid%f_ice,grid%f_rain,grid%sr                 &
      &            ,grid%q2,grid%u,grid%v,grid%ths,grid%nmm_tsk,grid%sst,grid%prec,grid%sno                     &
-     &            ,grid%scurx,grid%scury                                              &
+     &            ,grid%scurx,grid%scury                                                             &
      &            ,grid%fis,grid%z0,grid%mz0,grid%z0base,grid%ustar,grid%mixht,grid%pblh,grid%lpbl,grid%el_pbl    &   !KWON MZ0
      &            ,MOIST,SCALAR,grid%rmol,grid%mol                                      &
      &            ,grid%exch_h,grid%exch_m,grid%f,grid%akhs,grid%akms,grid%akhs_out,grid%akms_out         &
@@ -1707,7 +1707,7 @@
         btimx=now_time()
         call ATM_DOFLUXES(grid%twbs,grid%qwbs,grid%rlwin,grid%rswin,grid%radot,grid%rswout, &
         grid%taux,grid%tauy,grid%pint,grid%prec)
-        CALL atm_prepwindp(grid%ulowl,grid%vlowl,grid%rchno,grid%zsig1) !BT
+        CALL atm_prepwindp(grid%ulowl,grid%vlowl,grid%rchno,grid%zsig1)
         flux_tim=flux_tim+now_time()-btimx
 !<-:Coupling insertion
 !
@@ -1806,7 +1806,6 @@
      &   (CONFIG_FLAGS%CU_PHYSICS.eq.KFETASCHEME .or.                     &
      &   CONFIG_FLAGS%CU_PHYSICS.eq.OSASSCHEME .or.                       &
      &   CONFIG_FLAGS%CU_PHYSICS.eq.NSASSCHEME .or.                       &
-     &   CONFIG_FLAGS%CU_PHYSICS.eq.MESO_SAS .or.                         &   !Kwon
      &   CONFIG_FLAGS%CU_PHYSICS.eq.SASSCHEME))THEN                       ! 
 !
 #ifdef NMM_FIND_LOAD_IMBALANCE
@@ -1866,7 +1865,7 @@
             its,ite,jts,jte,kts,kte)
         CALL CUCNVC(grid%ntsd,GRID%DT,GRID%NCNVC,GRID%NRADS,GRID%NRADL      &
      &             ,GPS,RESTRT,grid%hydro,grid%cldefi,N_MOIST,NUM_SCALAR,GRID%ENSDIM        &
-     &             ,MOIST,SCALAR                                              &
+     &             ,MOIST,SCALAR                                       &
      &             ,grid%deta1,grid%deta2,grid%aeta1,grid%aeta2,grid%eta1,grid%eta2                  &
      &             ,grid%f_ice,grid%f_rain                                       &
 !***  Changes for other cu schemes, most for GD scheme
@@ -1881,17 +1880,17 @@
      &             ,grid%prec,grid%acprec,grid%cuprec,grid%cuppt,grid%cprate                    &
      &             ,grid%sm,grid%hbm2,grid%pblh,grid%lpbl,grid%cnvbot,grid%cnvtop                         &
      &             ,grid%htop,grid%hbot,grid%htopd,grid%hbotd,grid%htops,grid%hbots                  &
-     &             ,RTHBLTEN,RQVBLTEN,RTHRATEN                         & 
+     &             ,RTHBLTEN,RQVBLTEN,RTHRATEN                          & 
 #if (NMM_CORE==1)                  
      &             ,grid%twbs,grid%qwbs                                &
-     &                 ,grid%DUCUDT, grid%DVCUDT, GRID%MOMMIX, grid%random             & 
-     &                 ,grid%DTHCUDT,grid%DQVCUDT,grid%DQRCUDT,grid%DQCCUDT   &! wang, output CU tendency 
-     &                 ,grid%DQICUDT,grid%DQSCUDT                      &
+     &             ,grid%DUCUDT, grid%DVCUDT, GRID%MOMMIX, grid%random & 
+     &             ,grid%DTHCUDT,grid%DQVCUDT,grid%DQRCUDT,grid%DQCCUDT&! wang, output CU tendency 
+     &             ,grid%DQICUDT,grid%DQSCUDT                          &
 #endif
      &             ,grid%hpbl2d,grid%evap2d,grid%heat2d                &
      &             ,grid%dx_nmm,grid%dy_nmm                            & !wang, dx2d, dy
-     &             ,grid%scalefun, grid%scalefun1                           & !wang
-     &             ,grid%sigmu, grid%sigmu1                           & !wang
+     &             ,grid%scalefun, grid%scalefun1                      & !wang
+     &             ,grid%sigmu, grid%sigmu1                            & !wang
      &             ,grid%avcnvc,grid%acutim,grid%ihe,grid%ihw          &
      &             ,GRID,CONFIG_FLAGS                                  &
      &             ,IDS,IDF,JDS,JDF,KDS,KDE                            &
@@ -1920,7 +1919,6 @@
         IF(MOD(grid%ntsd, GRID%NCNVC).eq.0.and.                 &
      &    (CONFIG_FLAGS%CU_PHYSICS.eq.OSASSCHEME.or.            &
      &     CONFIG_FLAGS%CU_PHYSICS.eq.NSASSCHEME.or.            &
-     &     CONFIG_FLAGS%CU_PHYSICS.eq.MESO_SAS.or.              & !Kwon
      &     CONFIG_FLAGS%CU_PHYSICS.eq.SASSCHEME))THEN 
 !emc_2010_bugfix_h50
 !
@@ -2671,7 +2669,7 @@
 ! Coupling insertion:->
         btimx=now_time()
         call ATM_SENDFLUXES
-        CALL atm_sendwindp  !BT
+        CALL atm_sendwindp  
         flux_tim=flux_tim+now_time()-btimx
 !<-:Coupling insertion
 !
@@ -2871,8 +2869,6 @@
       ENDIF
 !
 !----------------------------------------------------------------------
-!!!!  DO 500 K=KTS,KTE+KK     !Unflipped
-!!!!  DO 500 K=KTE+KK,KTS,-1
       write_layers: DO K=KDE-1,KDS,-1   !Write LM layers top down for checking
 !----------------------------------------------------------------------
 !
@@ -3061,8 +3057,6 @@
 !     ENDIF
 !
 !----------------------------------------------------------------------
-!!!!  DO 500 K=KTS,KTE+KK     !Unflipped
-!!!!  DO 500 K=KTE+KK,KTS,-1
       write_layers: DO K=KDE-1,KDS,-1   !Write LM layers top down for checking
 !----------------------------------------------------------------------
 !
