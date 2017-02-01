@@ -101,6 +101,7 @@ CONTAINS
                      ,DX2D, DYNMM                                     & ! For scale-aware SAS
                      ,SCALEFUN,SCALEFUN1                              & !    scale functions 
                      ,SIGMU,SIGMU1                                    & !    updraft fraction
+
                  ! Optional arguments for NSAS scheme
                      ,mp_physics                                      &
                  ! Optional moisture and other tendencies
@@ -134,6 +135,7 @@ CONTAINS
                                           ,CAMZMSCHEME, SASSCHEME     &
                                           ,OSASSCHEME                 &  
                                           ,SCALESASSCHEME             &  ! scale-sware sas
+
                                           ,NSASSCHEME                 &
 #if (EM_CORE == 1)
                                           ,MSKFSCHEME                 &
@@ -517,13 +519,6 @@ CONTAINS
 
    REAL, DIMENSION( ims:ime , jms:jme ), OPTIONAL,               &    !Kwon for sas2010 shallow convection
                     INTENT(INOUT) ::  HPBL2D, EVAP2D, HEAT2D
-
-   REAL, DIMENSION( ims:ime , jms:jme ), OPTIONAL,               &    
-                    INTENT(IN) ::  DX2D                           ! Wang for scale-aware SAS
-   REAL, OPTIONAL,  INTENT(IN) ::  DYNMM                          ! Wang for scale-aware SAS  
-   REAL, DIMENSION( ims:ime , jms:jme ), OPTIONAL,INTENT(INOUT) :: &
-                                   SCALEFUN,SCALEFUN1,SIGMU,SIGMU1    
-
 !
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                 &
                    INTENT(INOUT) :: rucuten,rvcuten

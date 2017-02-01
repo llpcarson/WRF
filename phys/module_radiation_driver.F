@@ -3538,7 +3538,7 @@ CONTAINS
       REAL, INTENT(IN):: entr
       REAL, DIMENSION(kts:kte), INTENT(IN):: cfr, qvs, T, Rho, dz
       REAL, DIMENSION(kts:kte), INTENT(INOUT):: qi, qs
-      REAL:: iwc, max_iwc, tdz, this_iwc, this_dz, iwp_exists
+      REAL:: iwp, xiwp, max_iwp, tdz, this_iwp
       INTEGER:: k
 
       max_iwp = ABS(qvs(k2-1)-qvs(k2))*Rho(k2-1)*dz(k2-1)
