@@ -1174,7 +1174,6 @@ CONTAINS
            DO j = jts,jte
            DO i = its,ite
            DO k = kts,kte
-              IF (qc(i,k,j) < 1.E-6 .AND. qi(i,k,j) < 1.E-6 .AND. CLDFRA_BL(i,k,j)>0.001) THEN
                !Partition the BL clouds into water & ice according to a linear
                !approximation of Hobbs et al. (1974). This allows us to only use
                !one 3D array for both cloud water & ice.
@@ -1184,7 +1183,6 @@ CONTAINS
                CLDFRA(i,k,j)=MAX(0.0,MIN(1.0,CLDFRA(i,k,j)))
                qc(i,k,j)=qc(i,k,j) + QC_BL(i,k,j)*(MIN(1., MAX(0., (t(i,k,j)-254.)/15.)))*CLDFRA_BL(i,k,j)
                qi(i,k,j)=qi(i,k,j) + QC_BL(i,k,j)*(1. - MIN(1., MAX(0., (t(i,k,j)-254.)/15.)))*CLDFRA_BL(i,k,j)
-              ENDIF
            ENDDO
            ENDDO
            ENDDO
@@ -3266,7 +3264,7 @@ CONTAINS
       DO j = jts,jte
       DO k = kts,kte
       DO i = its,ite
-
+         RHI_max = 0.0
          CLDFRA(I,K,J) = 0.0
 
          if (qc(i,k,j)+qi(i,k,j)+qs(i,k,j) .gt. 1.E-7) then
@@ -3281,12 +3279,12 @@ CONTAINS
 
             if (tc .ge. -12.0) then
                qvsat(i,k,j) = qvsw
-            elseif (tc .lt. -20.0) then
+            elseif (tc .lt. -30.0) then
                qvsat(i,k,j) = qvsi
             else
-               qvsat(i,k,j) = qvsw - (qvsw-qvsi)*(-12.0-tc)/(-12.0+20.)
+               qvsat(i,k,j) = qvsw - (qvsw-qvsi)*(-12.0-tc)/(-12.0+30.)
             endif
-            RHUM = MAX(0.01, MIN(qv(i,k,j)/qvsat(i,k,j), 0.9999))
+            RHUM = qv(i,k,j)/qvsat(i,k,j)
 
             IF ((XLAND(I,J)-1.5).GT.0.) THEN                             !--- Ocean
                RH_00 = RH_00O
@@ -3298,9 +3296,9 @@ CONTAINS
                RHUM = MIN(0.999, RHUM)
                CLDFRA(I,K,J) = MAX(0.0, 1.0-SQRT((1.0-RHUM)/(1.-RH_00)))
             elseif (tc.lt.-12..and.tc.gt.-70. .and. RHUM.gt.RH_00O) then
-               RHUM = MAX(0.01, MIN(qv(i,k,j)/qvsat(i,k,j), qvsw/qvsi - 1.E-6))
                RHI_max = MAX(RHUM+1.E-6, qvsw/qvsi)
-               CLDFRA(I,K,J) = MAX(0., 1.0-SQRT((RHI_max-RHUM)/(RHI_max-RH_00O)))
+               CLDFRA(I,K,J) = MAX(0., ((RH_00O-RHUM)/(RH_00O-RHI_max)) &
+     &                                *((RH_00O-RHUM)/(RH_00O-RHI_max)))
             endif
 
             CLDFRA(I,K,J) = MIN(0.95, CLDFRA(I,K,J))
@@ -3323,7 +3321,7 @@ CONTAINS
 !        if (rand_perturb_on .eq. 1) then
 !           entrmnt = MAX(0.01, MIN(0.99, 0.5 + rand_pert(i,1,j)*0.5))
 !        else
-            entrmnt = 0.5
+            entrmnt = 0.35
 !        endif
 
          DO k = kts,kte
@@ -3470,9 +3468,6 @@ CONTAINS
             call adjust_cloudIce(cfr1d, qi1d, qs1d, qvs1d, T1d,R1d,dz,  &
      &                           entrmnt, k_cldb,k_cldt,kts,kte)
             k = k_cldb
-         else
-            if (cfr1d(k_cldb).gt.0.and.qi1d(k_cldb).lt.1.E-6)           &
-     &               qi1d(k_cldb)=1.E-5*cfr1d(k_cldb)
          endif
          k = k - 1
       ENDDO
@@ -3506,9 +3501,6 @@ CONTAINS
             call adjust_cloudH2O(cfr1d, qc1d, qvs1d, T1d,R1d,dz,        &
      &                           entrmnt, k_cldb,k_cldt,kts,kte)
             k = k_cldb
-         else
-            if (cfr1d(k_cldb).gt.0.and.qc1d(k_cldb).lt.1.E-6)           &
-     &               qc1d(k_cldb)=1.E-5*cfr1d(k_cldb)
          endif
          k = k - 1
       ENDDO
@@ -3546,9 +3538,8 @@ CONTAINS
       REAL, INTENT(IN):: entr
       REAL, DIMENSION(kts:kte), INTENT(IN):: cfr, qvs, T, Rho, dz
       REAL, DIMENSION(kts:kte), INTENT(INOUT):: qi, qs
-      REAL:: iwp, xiwp, max_iwp, tdz, this_iwp
+      REAL:: iwc, max_iwc, tdz, this_iwc, this_dz, iwp_exists
       INTEGER:: k
-      REAL, PARAMETER:: entr=0.35
 
       max_iwp = ABS(qvs(k2-1)-qvs(k2))*Rho(k2-1)*dz(k2-1)
 
@@ -3560,19 +3551,10 @@ CONTAINS
       enddo
       max_iwp = MAX(max_iwp*(1.-entr), MIN(1.0, iwp*(1.0-entr)))
 
-      this_dz = 0.0
       do k = k1, k2
-         if (k.eq.k1) then
-            this_dz = this_dz + 0.5*dz(k)
-         else
-            this_dz = this_dz + dz(k)
-         endif
-         this_iwc = max_iwc*this_dz/tdz
-         iwc = MAX(1.E-6, this_iwc*(1.-entr))
+         this_iwp = max_iwp*dz(k)/tdz
          if (cfr(k).gt.0.01.and.cfr(k).lt.0.99.and.T(k).ge.203.16) then
-            qi(k) = qi(k) + 0.1*cfr(k)*iwc
-         elseif (qi(k).lt.1.E-5.and.cfr(k).ge.0.99.and.T(k).ge.203.16) then
-            qi(k) = qi(k) + 0.01*iwc
+            qi(k) = qi(k) + cfr(k)*cfr(k)*this_iwp/Rho(k)/dz(k)
          endif
       enddo
 
@@ -3590,7 +3572,6 @@ CONTAINS
       REAL, DIMENSION(kts:kte):: cfr, qc, qvs, T, Rho, dz
       REAL:: lwp, xlwp, max_lwp, tdz, this_lwp
       INTEGER:: k
-      REAL, PARAMETER:: entr=0.35
 
       max_lwp = ABS(qvs(k2-1)-qvs(k2))*Rho(k2-1)*dz(k2-1)
 
@@ -3602,7 +3583,6 @@ CONTAINS
       enddo
       max_lwp = MAX(max_lwp*(1.-entr), MIN(1.0, lwp*(1.0-entr)))
 
-      this_dz = 0.0
       do k = k1, k2
          this_lwp = max_lwp*dz(k)/tdz
          if (cfr(k).gt.0.95.and.qc(k).lt.1.E-7.and.T(k).lt.273.16) then
