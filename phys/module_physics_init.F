@@ -3297,6 +3297,7 @@ CALL lsm_mosaic_init(IVGTYP,config_flags%ISWATER,config_flags%ISURBAN,config_fla
    USE module_cu_sas
    USE module_cu_scalesas
    USE module_cu_osas
+   USE module_cu_mesosas
    USE module_cu_camzm_driver, ONLY : zm_conv_init
    USE module_cu_nsas
    USE module_cu_tiedtke

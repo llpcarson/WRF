@@ -172,7 +172,7 @@ CONTAINS
    USE module_cu_kfcup  , ONLY : KF_CUP_CPS !wig, 3-Aug-2006 !BSINGH - For WRFCuP scheme 
 #endif
    USE module_cu_osas   , ONLY : cu_osas
-   USE module_cu_mesosas, ONLY : cu_mesosas
+   USE module_cu_mesosas, ONLY : cu_meso_sas
    USE module_cu_camzm_driver, ONLY : camzm_driver
    USE module_cu_tiedtke, ONLY : cu_tiedtke
    USE module_cu_ntiedtke,ONLY : cu_ntiedtke

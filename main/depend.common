@@ -553,6 +553,7 @@ module_physics_init.o : \
 		module_cu_sas.o			\
 		module_cu_scalesas.o            \
 		module_cu_osas.o		\
+		module_cu_mesosas.o		\
 		module_cu_camzm_driver.o        \
 		module_cu_kfcup.o               \
 		module_shcu_camuwshcu.o		\
@@ -629,6 +630,7 @@ module_cumulus_driver.o: \
 		module_cu_sas.o \
 		module_cu_scalesas.o \
 		module_cu_osas.o \
+		module_cu_mesosas.o \
 		module_cu_camzm_driver.o \
 		module_cu_tiedtke.o \
 		module_cu_ntiedtke.o \
