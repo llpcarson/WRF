@@ -1115,6 +1115,7 @@
          IF ( ( model_config_rec%cu_physics(1) .EQ. BMJSCHEME     ) .OR. &
               ( model_config_rec%cu_physics(1) .EQ. SCALESASSCHEME) .OR. &
               ( model_config_rec%cu_physics(1) .EQ. SASSCHEME     ) .OR. &
+              ( model_config_rec%cu_physics(1) .EQ. SCALESASSCHEME     ) .OR. &
               ( model_config_rec%cu_physics(1) .EQ. OSASSCHEME    ) .OR. &
               ( model_config_rec%cu_physics(1) .EQ. NSASSCHEME    ) .OR. &
               ( model_config_rec%cu_physics(1) .EQ. TIEDTKESCHEME ) ) THEN

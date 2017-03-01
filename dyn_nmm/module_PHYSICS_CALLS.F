@@ -2616,12 +2616,10 @@
           P8W(I,K+1,J)=ETA1(K+1)*PDTOP+ETA2(K+1)*PDSL(I,J)+PT
           P_PHY(I,K,J)=PLYR
           PI_PHY(I,K,J)=(PLYR*1.E-5)**CAPA
-!
         ENDDO
+        ENDDO
+      ENDDO
 !
-      ENDDO
-      ENDDO
-
 !$omp parallel do                                                       &
 !$omp& private(i,j,k)
       DO J=JTS,JTE
@@ -2634,7 +2632,7 @@
           RQICUTEN(I,K,J)=0.
           RQSCUTEN(I,K,J)=0.
         ENDDO
-      ENDDO
+        ENDDO
       ENDDO
 !
 !-----------------------------------------------------------------------
