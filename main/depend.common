@@ -174,9 +174,6 @@ module_bl_gfs.o: module_gfs_machine.o \
 module_bl_gfsedmf.o: module_gfs_machine.o \
 		 module_gfs_physcons.o
 
-module_bl_gfsedmf.o: module_gfs_machine.o \
-		 module_gfs_physcons.o
-
 module_bl_mynn.o: ../share/module_model_constants.o
 
 module_cam_upper_bc.o: module_cam_shr_kind_mod.o \

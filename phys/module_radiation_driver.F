@@ -681,7 +681,6 @@ CONTAINS
 
    REAL , OPTIONAL, INTENT(INOUT) ::    radtacttime ! Storing the time in s when radiation is called next
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                  &
-         OPTIONAL,                                                &
          INTENT(INOUT)  ::                       o3rad
 
    ! vert nesting
@@ -1174,6 +1173,7 @@ CONTAINS
            DO j = jts,jte
            DO i = its,ite
            DO k = kts,kte
+              IF (qc(i,k,j) < 1.E-6 .AND. qi(i,k,j) < 1.E-6 .AND. CLDFRA_BL(i,k,j)>0.001) THEN
                !Partition the BL clouds into water & ice according to a linear
                !approximation of Hobbs et al. (1974). This allows us to only use
                !one 3D array for both cloud water & ice.
@@ -1183,6 +1183,7 @@ CONTAINS
                CLDFRA(i,k,j)=MAX(0.0,MIN(1.0,CLDFRA(i,k,j)))
                qc(i,k,j)=qc(i,k,j) + QC_BL(i,k,j)*(MIN(1., MAX(0., (t(i,k,j)-254.)/15.)))*CLDFRA_BL(i,k,j)
                qi(i,k,j)=qi(i,k,j) + QC_BL(i,k,j)*(1. - MIN(1., MAX(0., (t(i,k,j)-254.)/15.)))*CLDFRA_BL(i,k,j)
+              ENDIF
            ENDDO
            ENDDO
            ENDDO
@@ -1266,15 +1267,9 @@ CONTAINS
 
      END IF
 
-! ww: Interpolating climatological ozone and aerosol to model time and levels
+!     Interpolating climatological ozone and aerosol to model time and levels
 !     Adapted from camrad code
-     IF ( PRESENT( O3RAD ) ) THEN
-        call wrf_debug(1,'Have o3rad')
-#if (EM_CORE==1)
-     IF ( o3input .EQ. 2 .AND. id .EQ. 1 ) THEN
-#else
      IF ( o3input .EQ. 2 ) THEN
-#endif
 !       ! Find the current month (adapted from Cavallo)
 !       CALL cam_time_interp( ozmixm, pin, levsiz, date_str, &
 !                             ids , ide , jds , jde , kds , kde , &
@@ -1292,7 +1287,6 @@ CONTAINS
                               ids , ide , jds , jde , kds , kde ,     &
                               ims , ime , jms , jme , kms , kme ,     &
                               its , ite , jts , jte , kts , kte )
-     ENDIF
      ENDIF
 
      IF ( PRESENT( AEROD ) ) THEN
@@ -3264,7 +3258,7 @@ CONTAINS
       DO j = jts,jte
       DO k = kts,kte
       DO i = its,ite
-         RHI_max = 0.0
+
          CLDFRA(I,K,J) = 0.0
 
          if (qc(i,k,j)+qi(i,k,j)+qs(i,k,j) .gt. 1.E-7) then
@@ -3279,12 +3273,12 @@ CONTAINS
 
             if (tc .ge. -12.0) then
                qvsat(i,k,j) = qvsw
-            elseif (tc .lt. -30.0) then
+            elseif (tc .lt. -20.0) then
                qvsat(i,k,j) = qvsi
             else
-               qvsat(i,k,j) = qvsw - (qvsw-qvsi)*(-12.0-tc)/(-12.0+30.)
+               qvsat(i,k,j) = qvsw - (qvsw-qvsi)*(-12.0-tc)/(-12.0+20.)
             endif
-            RHUM = qv(i,k,j)/qvsat(i,k,j)
+            RHUM = MAX(0.01, MIN(qv(i,k,j)/qvsat(i,k,j), 0.9999))
 
             IF ((XLAND(I,J)-1.5).GT.0.) THEN                             !--- Ocean
                RH_00 = RH_00O
@@ -3295,12 +3289,10 @@ CONTAINS
             if (tc .ge. -12.0) then
                RHUM = MIN(0.999, RHUM)
                CLDFRA(I,K,J) = MAX(0.0, 1.0-SQRT((1.0-RHUM)/(1.-RH_00)))
-            elseif (tc.lt.-12..and.tc.gt.-70. .and. RHUM.gt.RH_00O) then
-               RHI_max = MAX(RHUM+1.E-6, qvsw/qvsi)
-               CLDFRA(I,K,J) = MAX(0., ((RH_00O-RHUM)/(RH_00O-RHI_max)) &
-     &                                *((RH_00O-RHUM)/(RH_00O-RHI_max)))
+            elseif (tc.lt.-12..and.tc.gt.-70. .and. RHUM.gt.RH_00L) then
+               RHUM = MAX(0.01, MIN(qv(i,k,j)/qvsat(i,k,j), 1.0 - 1.E-6))
+               CLDFRA(I,K,J) = MAX(0., 1.0-SQRT((1.0-RHUM)/(1.0-RH_00L)))
             endif
-
             CLDFRA(I,K,J) = MIN(0.95, CLDFRA(I,K,J))
 
          endif
@@ -3383,8 +3375,8 @@ CONTAINS
       k_m40C = 0
       DO k = kte, kts, -1
          theta(k) = T1d(k)*((100000.0/P1d(k))**(287.05/1004.))
-         if (T1d(k)-273.16 .gt. -40.0) k_m40C = MAX(k_m40C, k)
-         if (T1d(k)-273.16 .gt. -12.0) k_m12C = MAX(k_m12C, k)
+         if (T1d(k)-273.16 .gt. -40.0 .and. P1d(k).gt.7000.0) k_m40C = MAX(k_m40C, k)
+         if (T1d(k)-273.16 .gt. -12.0 .and. P1d(k).gt.10000.0) k_m12C = MAX(k_m12C, k)
       ENDDO
       if (k_m40C .le. kts) k_m40C = kts
       if (k_m12C .le. kts) k_m12C = kts
@@ -3433,7 +3425,6 @@ CONTAINS
          endif
       ENDDO
 
-
 !..Starting below tropo height, if cloud fraction greater than 1 percent,
 !.. compute an approximate total layer depth of cloud, determine a total 
 !.. liquid water/ice path (LWP/IWP), then reduce that amount with tuning 
@@ -3468,6 +3459,9 @@ CONTAINS
             call adjust_cloudIce(cfr1d, qi1d, qs1d, qvs1d, T1d,R1d,dz,  &
      &                           entrmnt, k_cldb,k_cldt,kts,kte)
             k = k_cldb
+         else
+            if (cfr1d(k_cldb).gt.0.and.qi1d(k_cldb).lt.1.E-6)           &
+     &               qi1d(k_cldb)=1.E-5*cfr1d(k_cldb)
          endif
          k = k - 1
       ENDDO
@@ -3501,6 +3495,9 @@ CONTAINS
             call adjust_cloudH2O(cfr1d, qc1d, qvs1d, T1d,R1d,dz,        &
      &                           entrmnt, k_cldb,k_cldt,kts,kte)
             k = k_cldb
+         else
+            if (cfr1d(k_cldb).gt.0.and.qc1d(k_cldb).lt.1.E-6)           &
+     &               qc1d(k_cldb)=1.E-5*cfr1d(k_cldb)
          endif
          k = k - 1
       ENDDO
@@ -3551,10 +3548,19 @@ CONTAINS
       enddo
       max_iwp = MAX(max_iwp*(1.-entr), MIN(1.0, iwp*(1.0-entr)))
 
+      this_dz = 0.0
       do k = k1, k2
-         this_iwp = max_iwp*dz(k)/tdz
+         if (k.eq.k1) then
+            this_dz = this_dz + 0.5*dz(k)
+         else
+            this_dz = this_dz + dz(k)
+         endif
+         this_iwc = max_iwc*this_dz/tdz
+         iwc = MAX(1.E-6, this_iwc*(1.-entr))
          if (cfr(k).gt.0.01.and.cfr(k).lt.0.99.and.T(k).ge.203.16) then
-            qi(k) = qi(k) + cfr(k)*cfr(k)*this_iwp/Rho(k)/dz(k)
+            qi(k) = qi(k) + 0.1*cfr(k)*iwc
+         elseif (qi(k).lt.1.E-5.and.cfr(k).ge.0.99.and.T(k).ge.203.16) then
+            qi(k) = qi(k) + 0.01*iwc
          endif
       enddo
 
@@ -3583,6 +3589,7 @@ CONTAINS
       enddo
       max_lwp = MAX(max_lwp*(1.-entr), MIN(1.0, lwp*(1.0-entr)))
 
+      this_dz = 0.0
       do k = k1, k2
          this_lwp = max_lwp*dz(k)/tdz
          if (cfr(k).gt.0.95.and.qc(k).lt.1.E-7.and.T(k).lt.273.16) then
@@ -3611,20 +3618,15 @@ CONTAINS
       INTEGER:: k
 
       lwp = 0.
-      do k = kts, k_tropo
-         if (cfr(k).gt.0.01 .and. cfr(k).lt.0.99) then
-            lwp = lwp + qc(k)*Rho(k)*dz(k)
-         endif
-      enddo
-
       iwp = 0.
       do k = kts, k_tropo
-         if (cfr(k).gt.0.01 .and. cfr(k).lt.0.99) then
+         if (cfr(k).gt.0.0) then
+            lwp = lwp + qc(k)*Rho(k)*dz(k)
             iwp = iwp + qi(k)*Rho(k)*dz(k)
          endif
       enddo
 
-      if (lwp .gt. 1.0) then
+      if (lwp .gt. 1.5) then
          xfac = 1./lwp
          do k = kts, k_tropo
             if (cfr(k).gt.0.01 .and. cfr(k).lt.0.99) then
@@ -3633,7 +3635,7 @@ CONTAINS
          enddo
       endif
 
-      if (iwp .gt. 1.0) then
+      if (iwp .gt. 1.5) then
          xfac = 1./iwp
          do k = kts, k_tropo
             if (cfr(k).gt.0.01 .and. cfr(k).lt.0.99) then
