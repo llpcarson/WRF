@@ -1024,8 +1024,6 @@
 
       REAL,DIMENSION(IMS:IME,JMS:JME), INTENT(OUT) :: ULOWL, VLOWL
 !
-      REAL,DIMENSION(IMS:IME,JMS:JME), INTENT(OUT) :: ULOWL, VLOWL
-!
       REAL,DIMENSION(:,:,:,:),ALLOCATABLE :: MOIST_TRANS
 !
       REAL,DIMENSION(IMS:IME,NSOIL,JMS:JME) :: ZERO_SOIL
@@ -1445,9 +1443,6 @@
      &          ,ICOEF_SF=CONFIG_FLAGS%ICOEF_SF                         &
      &          ,IWAVECPL=CONFIG_FLAGS%IWAVECPL                         &
      &          ,LCURR_SF=CONFIG_FLAGS%LCURR_SF                         &!for gfdl-sf drag
-     &          ,ZKMAX=ZKMAX,RIBN=RIBN                                  &
-     &          ,CHARN=CHARN,MSANG=MSANG,SCURX=SCURX,SCURY=SCURY        &
-     &          ,IWAVECPL=CONFIG_FLAGS%IWAVECPL                         &
 #if (HWRF==1)
      &          ,pert_Cd=config_flags%pert_Cd                           &
      &          ,ens_random_seed=config_flags%ens_random_seed           &

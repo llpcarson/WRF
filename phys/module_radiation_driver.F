@@ -3548,19 +3548,10 @@ CONTAINS
       enddo
       max_iwp = MAX(max_iwp*(1.-entr), MIN(1.0, iwp*(1.0-entr)))
 
-      this_dz = 0.0
       do k = k1, k2
-         if (k.eq.k1) then
-            this_dz = this_dz + 0.5*dz(k)
-         else
-            this_dz = this_dz + dz(k)
-         endif
-         this_iwc = max_iwc*this_dz/tdz
-         iwc = MAX(1.E-6, this_iwc*(1.-entr))
+         this_iwp = max_iwp*dz(k)/tdz
          if (cfr(k).gt.0.01.and.cfr(k).lt.0.99.and.T(k).ge.203.16) then
-            qi(k) = qi(k) + 0.1*cfr(k)*iwc
-         elseif (qi(k).lt.1.E-5.and.cfr(k).ge.0.99.and.T(k).ge.203.16) then
-            qi(k) = qi(k) + 0.01*iwc
+            qi(k) = qi(k) + cfr(k)*cfr(k)*this_iwp/Rho(k)/dz(k)
          endif
       enddo
 
@@ -3589,7 +3580,6 @@ CONTAINS
       enddo
       max_lwp = MAX(max_lwp*(1.-entr), MIN(1.0, lwp*(1.0-entr)))
 
-      this_dz = 0.0
       do k = k1, k2
          this_lwp = max_lwp*dz(k)/tdz
          if (cfr(k).gt.0.95.and.qc(k).lt.1.E-7.and.T(k).lt.273.16) then
