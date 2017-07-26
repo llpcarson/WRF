@@ -2540,9 +2540,9 @@
       IF(MOD(NTSD,NCNVC)/=0.AND.                                      &
      &   CONFIG_FLAGS%CU_PHYSICS==MESO_SAS)RETURN
       IF(MOD(NTSD,NCNVC)/=0.AND.                                      &
-     &   CONFIG_FLAGS%CU_PHYSICS==SCALESASSCHEME)RETURN        ! Wang
+     &   CONFIG_FLAGS%CU_PHYSICS==SCALESASSCHEME)RETURN        
       IF(MOD(NTSD,NCNVC)/=0.AND.                                      &
-     &   CONFIG_FLAGS%CU_PHYSICS==GFSCHEME)RETURN             ! gf
+     &   CONFIG_FLAGS%CU_PHYSICS==GFSCHEME)RETURN            
  
 !-----------------------------------------------------------------------
       NSTEP_CNV=NCNVC
@@ -2801,7 +2801,24 @@
 
 
       CALL SET_TILES(GRID,IDS+1,IDE-1,JDS+2,JDE-2,ITS,ITE,JTS,JTE)
-
+#if (NMM_CORE==1)
+!$omp parallel do                                                       &
+!$omp& private(i,j,k)
+        DO K=KMS,KME
+        DO J=JMS,JME
+        DO I=IMS,IME
+           DUCUDT(i,j,k)=0.0
+           DVCUDT(i,j,k)=0.0
+           DTHCUDT(i,j,k)=0.0
+           DQVCUDT(i,j,k)=0.0
+           DQRCUDT(i,j,k)=0.0
+           DQCCUDT(i,j,k)=0.0
+           DQICUDT(i,j,k)=0.0
+           DQSCUDT(i,j,k)=0.0
+        ENDDO
+        ENDDO
+        ENDDO
+#endif
       CALL CUMULUS_DRIVER(GRID                                          &
      &                 ,IDS=IDS,IDE=IDE,JDS=JDS,JDE=JDE,KDS=KDS,KDE=KDE &
      &                 ,IMS=IMS,IME=IME,JMS=JMS,JME=JME,KMS=KMS,KME=KME &

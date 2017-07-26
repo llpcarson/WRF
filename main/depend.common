@@ -174,9 +174,6 @@ module_bl_gfs.o: module_gfs_machine.o \
 module_bl_gfsedmf.o: module_gfs_machine.o \
 		 module_gfs_physcons.o
 
-module_bl_gfsedmf.o: module_gfs_machine.o \
-		 module_gfs_physcons.o
-
 module_bl_mynn.o: ../share/module_model_constants.o
 
 module_cam_upper_bc.o: module_cam_shr_kind_mod.o \
@@ -530,6 +527,7 @@ module_physics_init.o : \
 		module_sf_ruclsm.o		\
 		module_sf_pxlsm.o		\
 		module_sf_lake.o		\
+		module_sf_gfdl.o		\
 		module_bl_ysu.o		        \
 		module_bl_mrf.o			\
 		module_bl_gfs.o			\
@@ -710,6 +708,7 @@ module_surface_driver.o: \
 		module_sf_qnsesfc.o		\
 		module_sf_pxsfclay.o		\
 		module_sf_gfs.o  		\
+		module_sf_gfdl.o 		\
 		module_sf_noah_seaice_drv.o	\
                 module_sf_noahmp_groundwater.o  \
 		module_sf_noahdrv.o		\

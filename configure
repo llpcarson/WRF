@@ -50,7 +50,7 @@ if [ -n "$print_usage" ] ; then
   echo '-d    build with debugging information and no optimization'
   echo '-D    build with -d AND floating traps, traceback, uninitialized variables'
   echo '-r8   build with 8 byte reals'
-  echo '-vn   build with vertical nesting (no hybrid option for ARW)'
+  echo '-hyb  build with hybrid vertical coordinate (HVC) for ARW only'
   echo '-help print this message'
   echo '*****************************************************************************'
   echo ' '
@@ -420,20 +420,20 @@ fi
 # a problem for ARW
 
 if [ -n "$WRF_NMM_CORE" -a "$WRF_NMM_CORE" = "1" ] ; then
-    TFL="-traditional-cpp"
-    CFL="-P"
+  TFL="-traditional-cpp"
+  CFL="-P -nostdinc"
 elif [ "$wrf_core" = "DA_CORE" -o "$wrf_core" = "4D_DA_CORE" ] ; then
   TFL="-traditional-cpp"
-  CFL="-P"
+  CFL="-P -nostdinc"
 elif [ "$vnest" = "VN" ] ; then
   TFL="-traditional-cpp"
-  CFL="-P"
+  CFL="-P -nostdinc"
 elif [ "$hyb" = "NOHYB" ] ; then
   TFL="-traditional-cpp"
-  CFL="-P"
+  CFL="-P -nostdinc"
 else
   TFL=" "
-  CFL="-P -C"
+  CFL="-P -C -nostdinc"
   compileflags="${compileflags}!-DHYBRID_COORD=1"
 fi
 
@@ -1076,6 +1076,27 @@ if [ $retval -ne 0 ] ; then
     echo " "
     echo "*****************************************************************************"
   fi
+fi
+
+# testing for Fortran 2008 intrinsic gamma function
+make fortran_2008_gamma_test > tools/fortran_2008_gamma.log 2>&1
+rm -f tools/fortran_2008_gamma.log
+retval=-1
+if [ -f tools/fortran_2008_gamma_test.exe ] ; then
+  retval=0
+fi
+if [ $retval -ne 0 ] ; then
+  sed -e '/^ARCH_LOCAL/s/$/ -DNO_GAMMA_SUPPORT/' configure.wrf > configure.wrf.edit
+  mv configure.wrf.edit configure.wrf
+  echo " "
+  echo " "
+  echo "************************** W A R N I N G ************************************"
+  echo " "
+  echo "There are some Fortran 2008 features in WRF that your compiler does not recognize"
+  echo "The intrinsic gamma function is not available, required by some schemes."
+  echo "That code is stubbbed out, and those schemes are unavailable at run-time."
+  echo " "
+  echo "*****************************************************************************"
 fi
 
 # testing for netcdf4 IO features

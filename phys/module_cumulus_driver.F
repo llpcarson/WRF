@@ -288,8 +288,8 @@ CONTAINS
 !-- RTHRATEN      radiative temp forcing for Grell-Devenyi scheme
 !-- RTHBLTEN      PBL temp forcing for Grell-Devenyi scheme
 !-- RQVBLTEN      PBL moisture forcing for Grell-Devenyi scheme
-!-- RTHFTEN
-!-- RQVFTEN
+!-- RTHFTEN       Advective tendency for theta
+!-- RQVFTEN       Advective tendency for vapor
 !-- MASS_FLUX
 !-- XF_ENS
 !-- PR_ENS
@@ -802,7 +802,7 @@ CONTAINS
    END IF
 
 #if  ( EM_CORE == 1 )
-      if(cu_physics .eq. 5 .or. cu_physics .eq. 16) then
+      if(cu_physics == G3SCHEME .or. cu_physics == NTIEDTKESCHEME) then
       !$OMP PARALLEL DO   &
       !$OMP PRIVATE ( ij,i,j,k,its,ite,jts,jte )
 
@@ -1094,7 +1094,7 @@ CONTAINS
                                                                 )
      CASE (MESO_SAS)                  !Kwon
 
-          IF ( adapt_step_flag_pass ) THEN
+         IF ( adapt_step_flag_pass ) THEN
             WRITE( wrf_err_message , * ) 'The meso SAS cumulus option will not work properly with an adaptive time step'
             CALL wrf_error_fatal ( wrf_err_message )
           END IF
@@ -1312,7 +1312,6 @@ CONTAINS
                ,do_capsuppress=do_capsuppress                   &
                ,cap_suppress_loc=cap_suppress_loc               &
 #endif 
-
                                                                 )
 #endif
 

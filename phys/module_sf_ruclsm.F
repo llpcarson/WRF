@@ -479,7 +479,6 @@ CONTAINS
            qsfc(i,j) = qvg(i,j)/(1.+qvg(i,j))
            SMELT(i,j) = 0.
            SNOM (i,j) = 0.
-           ACSNOW(i,j) = 0.
            SNOWFALLAC(i,j) = 0.
            PRECIPFR(i,j) = 0.
            RHOSNF(i,j) = -1.e3 ! non-zero flag
@@ -804,7 +803,6 @@ CONTAINS
              SNOWC(I,J)=0.0
            LMAVAIL(I,J)=1.0
 ! accumulated water equivalent of frozen precipitation over water [mm]
-           acsnow(i,j)=acsnow(i,j)+precipfr(i,j)
 
            ILAND=iswater
 !           ILAND=16
@@ -1505,7 +1503,6 @@ print * ,'Soil moisture is below wilting in mixed grassland/cropland category at
 
            newsn=newsnms*delt
 !---- ACSNOW - run-total snowfall water [mm]
-           acsnow=acsnow+newsn*1.e3
 
        IF(NEWSN.GT.0.) THEN
 !       IF(NEWSN.GE.1.E-8) THEN
@@ -1513,6 +1510,8 @@ print * ,'Soil moisture is below wilting in mixed grassland/cropland category at
     IF ( wrf_at_debug_level(LSMRUC_DBG_LVL) ) THEN
       print *, 'THERE IS NEW SNOW, newsn', newsn
     ENDIF
+
+        newsnowratio = min(1.,newsn/(snwe+newsn))
 
 !*** Calculate fresh snow density (t > -15C, else MIN value)
 !*** Eq. 10 from Koren et al. (1999)
@@ -1591,17 +1590,24 @@ print * ,'Soil moisture is below wilting in mixed grassland/cropland category at
           CST=SAT
           DRIP=DD1-SAT
         ENDIF
-      else
-          CST=0.
-          DRIP=0.
-          interw=0.
-          intersn=0.
-          infwater=PRCPMS
-      endif ! vegfrac > 0.01
+     else
+         CST=0.
+         DRIP=0.
+         interw=0.
+         intersn=0.
+         infwater=PRCPMS
+     endif ! vegfrac > 0.01
+
+! SNHEI_CRIT is a threshold for fractional snow
+         SNHEI_CRIT=0.01601*1.e3/rhosn
+         SNHEI_CRIT_newsn=0.0005*1.e3/rhosn
+! snowfrac from the previous time step
+         SNOWFRAC=MIN(1.,SNHEI/(2.*SNHEI_CRIT))
+        if(snowfrac < 0.75) snow_mosaic = 1.
 
        IF(NEWSN.GT.0.) THEN
 !Update snow on the ground
-         snwe=snwe+newsn-intersn
+         snwe=max(0.,snwe+newsn-intersn)
 !      if(drip > 0.) then
 !       if (snow_mosaic==1.) then
 !         dripsn = drip*snowfrac
@@ -1611,7 +1617,19 @@ print * ,'Soil moisture is below wilting in mixed grassland/cropland category at
 !         snwe=snwe+drip
 !       endif
 !      endif
-!         newsnowratio = min(1.,newsn/snwe)
+! Add drip to snow on the ground
+      if(drip > 0.) then
+       if (snow_mosaic==1.) then
+         dripliq=drip*intwratio
+         dripsn = drip - dripliq
+         snwe=snwe+dripsn
+         infwater=infwater+dripliq
+         dripliq=0.
+         dripsn = 0.
+       else
+         snwe=snwe+drip
+       endif
+      endif
          snhei=snwe*rhowater/rhosn
          NEWSN=NEWSN*rhowater/rhonewsn
        ENDIF
@@ -1622,23 +1640,18 @@ print * ,'Soil moisture is below wilting in mixed grassland/cropland category at
          ILAND=ISICE
 !24nov15 - based on field exp on Pleasant View soccer fields
 !    if(meltfactor > 1.5) then ! all veg. types, except forests
-! SNHEI_CRIT is a threshold for fractional snow
-!         SNHEI_CRIT=0.01*1.e3/rhosn
-         SNHEI_CRIT=0.01601*1.e3/rhosn
+!         SNHEI_CRIT=0.01601*1.e3/rhosn
 ! Petzold - 1 cm of fresh snow overwrites effects from old snow.
 ! Need to test SNHEI_CRIT_newsn=0.01
 !         SNHEI_CRIT_newsn=0.01
-         SNHEI_CRIT_newsn=0.0005*1.e3/rhosn
 !    else  ! forests
-!24nov15
 !         SNHEI_CRIT=0.02*1.e3/rhosn
 !         SNHEI_CRIT_newsn=0.001*1.e3/rhosn
 !    endif
 
-!         SNOWFRAC=MIN(1.,SNHEI/SNHEI_CRIT)
          SNOWFRAC=MIN(1.,SNHEI/(2.*SNHEI_CRIT))
-!24nov15 - SNOWFRAC for urban category < 0.5 
-      if(ivgtyp == urban) snowfrac=min(0.7,snowfrac)
+!24nov15 - SNOWFRAC for urban category < 0.75 
+      if(ivgtyp == urban) snowfrac=min(0.75,snowfrac)
 !      if(meltfactor > 1.5) then
 !         if(isltyp > 9 .and. isltyp < 13) then
 !24nov15 clay soil types - SNOFRAC < 0.9
@@ -1652,7 +1665,7 @@ print * ,'Soil moisture is below wilting in mixed grassland/cropland category at
 !         SNOWFRAC=MIN(1.,SNHEI/(2.*SNHEI_CRIT))
 !       elseif(snowfrac < 0.3 .and. tabs > 275.) then
 
-          if(snowfrac < 0.75) snow_mosaic = 1.
+       if(snowfrac < 0.75) snow_mosaic = 1.
 
        if(newsn > 0. ) SNOWFRACnewsn=MIN(1.,SNHEI/SNHEI_CRIT_newsn)
 
@@ -6367,12 +6380,12 @@ print *,'INFMAX,INFMAX1,HYDRO(1)*SOILIQW(1),-TOTLIQ', &
        ENDDO
 
 !        perturb hydrolic conductivity by 10-30%, not more than 50%
-!beka         if (spp_lsm==1) then 
-!beka         DO K=1,NZS !lala
-!beka            fieldcol_sf(k)=hydro(k)*rstochcol(k)
-!beka            hydro(k)=hydro(k)*(1+rstochcol(k))
-!beka         ENDDO
-!beka         ENDIF
+         if (spp_lsm==1) then 
+         DO K=1,NZS !lala
+            fieldcol_sf(k)=hydro(k)*rstochcol(k)
+            hydro(k)=hydro(k)*(1+rstochcol(k))
+         ENDDO
+         ENDIF
 
 !       RETURN
 !       END
