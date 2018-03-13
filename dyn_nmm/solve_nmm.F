@@ -396,6 +396,7 @@
       ALLOCATE(RTHRATEN(IMS:IME,KMS:KME,JMS:JME),STAT=ISTAT)
 !
         IF(CONFIG_FLAGS%CU_PHYSICS==GDSCHEME.OR.                        &
+     &  CONFIG_FLAGS%CU_PHYSICS==GFSCHEME.OR.                           & 
      &  CONFIG_FLAGS%CU_PHYSICS==TIEDTKESCHEME.OR.                      &
      &  CONFIG_FLAGS%CU_PHYSICS==KFETASCHEME)THEN
 
@@ -404,6 +405,9 @@
         DO I=IMS,IME
           TTEN(I,K,J)=grid%t(I,J,K)
           QTEN(I,K,J)=grid%q(I,J,K)
+          RTHBLTEN(i,k,j) = 0.
+          RQVBLTEN(i,k,j) = 0.
+          RTHRATEN(i,k,j) = 0.
         ENDDO
         ENDDO
         ENDDO
@@ -1803,6 +1807,7 @@
 !
       IF(MOD(grid%ntsd,GRID%NCNVC)==0.AND.                              &
      &   (CONFIG_FLAGS%CU_PHYSICS.eq.KFETASCHEME .or.                     &
+     &   CONFIG_FLAGS%CU_PHYSICS.eq.GFSCHEME .or.                         &
      &   CONFIG_FLAGS%CU_PHYSICS.eq.OSASSCHEME .or.                       &
      &   CONFIG_FLAGS%CU_PHYSICS.eq.NSASSCHEME .or.                       &
      &   CONFIG_FLAGS%CU_PHYSICS.eq.SCALESASSCHEME .or.                   &
@@ -1833,6 +1838,7 @@
 !***  GET TENDENCIES FOR GD SCHEME.
 !    
         IF(CONFIG_FLAGS%CU_PHYSICS==GDSCHEME.OR.                        &
+     &  CONFIG_FLAGS%CU_PHYSICS==GFSCHEME.OR.                           & 
      &  CONFIG_FLAGS%CU_PHYSICS==TIEDTKESCHEME.OR.                      &
      &  CONFIG_FLAGS%CU_PHYSICS==KFETASCHEME)THEN
           DT_INV=1./GRID%DT
@@ -1875,6 +1881,8 @@
      &             ,grid%mass_flux,grid%xf_ens                                   &
      &             ,grid%pr_ens,grid%gsw                                         &
      &             ,grid%GD_CLOUD,grid%GD_CLOUD2,grid%ktop_deep                  &
+     &             ,grid%xmb_shallow,grid%k22_shallow,grid%kbcon_shallow,grid%ktop_shallow   &   !GF
+     &             ,grid%ierr_shallow                                  & !GF
      &             ,grid%pdtop,grid%pt,grid%pd,grid%res,grid%pint,grid%t,grid%q,grid%cwm,grid%tcucn                 &
      &             ,grid%omgalf,grid%u,grid%v,grid%w,grid%z,grid%fis,grid%w0avg                           &
      &             ,grid%prec,grid%acprec,grid%cuprec,grid%cuppt,grid%cprate                    &
@@ -1915,11 +1923,15 @@
 !        IF(MOD(grid%ntsd,GRID%NCNVC).eq.0.and.(CONFIG_FLAGS%CU_PHYSICS.eq.OSASSCHEME))THEN
 ! update to match HWRFV2 behaviour - review later (1/15/10)
 !
+! GFSCHEME included below as this code block is for schemes with momentum
+! tendencies from the convection scheme.  -egrell
+
 !emc_2010_bugfix_h50
         IF(MOD(grid%ntsd, GRID%NCNVC).eq.0.and.                 &
      &    (CONFIG_FLAGS%CU_PHYSICS.eq.OSASSCHEME.or.            &
      &     CONFIG_FLAGS%CU_PHYSICS.eq.NSASSCHEME.or.            &
      &     CONFIG_FLAGS%CU_PHYSICS.eq.SCALESASSCHEME.or.        &
+     &     CONFIG_FLAGS%CU_PHYSICS.eq.GFSCHEME.or.              & 
      &     CONFIG_FLAGS%CU_PHYSICS.eq.SASSCHEME))THEN 
 !emc_2010_bugfix_h50
 !

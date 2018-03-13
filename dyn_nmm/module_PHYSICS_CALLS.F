@@ -357,7 +357,7 @@
           TOTLWDN(I,J)=0.   ! Total longwave down at the surface
           CUPPTR(I,J)=CUPPT(I,J)   ! Temporary array set to zero in radiation
           HTOPR(I,J) =0.
-          HBOTR(I,J) =0.
+          HBOTR(I,J) = REAL(KTE+1)
           SWCF(I,J) =0.
           LWCF(I,J) =0.
 !
@@ -934,7 +934,7 @@
                                                       ,DUBLDT          &
                                                       ,DVBLDT
 
-      REAL,DIMENSION(IMS:IME,JMS:JME),INTENT(OUT) :: taux, tauy
+      REAL,DIMENSION(IMS:IME,JMS:JME),INTENT(INOUT) :: taux, tauy
       REAL,DIMENSION(IMS:IME,JMS:JME),INTENT(INOUT) :: zkmax, ribn
       REAL,DIMENSION(IMS:IME,JMS:JME),INTENT(IN) :: charn, msang
       REAL,DIMENSION(IMS:IME,JMS:JME,KMS:KME),INTENT(IN) :: PINT
@@ -1089,6 +1089,11 @@
       IFNDALBSI = 0
       IFNDSNOWSI = 0
       IFNDICEDEPTH = 0
+
+      ! BR is replaced by SF_GFDL inside SURFACE_DRIVER.  This variable
+      ! was uninitialized.  The variable RIBN or RCHNO in the Registry
+      ! are retained accross timesteps.  This is a bug fix to avoid junk
+      ! data in RCHNO at the I=IDE and J=JDE locations.
       BR=10
 
       SEAICE_ALBEDO_DEFAULT = CONFIG_FLAGS%SEAICE_ALBEDO_DEFAULT
@@ -2270,6 +2275,9 @@
      &                 ,MASS_FLUX         ,XF_ENS                       &
      &                 ,PR_ENS,GSW                                      &
      &                 ,GD_CLOUD,GD_CLOUD2,KTOP_DEEP                    &
+     &                 ,xmb_shallow,k22_shallow                         & !GF
+     &                 ,kbcon_shallow,ktop_shallow                      & !GF
+     &                 ,ierr_shallow                                    & !GF
      &                 ,PDTOP,PT,PD,RES,PINT,T,Q,CWM,TCUCN              &
      &                 ,OMGALF,U,V,W,Z,FIS,W0AVG                        &
      &                 ,PREC,ACPREC,CUPREC,CUPPT,CPRATE                 &
@@ -2420,7 +2428,13 @@
 
       REAL,DIMENSION(IMS:IME,KMS:KME,JMS:JME),INTENT(INOUT) :: GD_CLOUD &
      &                                                        ,GD_CLOUD2
-      INTEGER,DIMENSION(IMS:IME,JMS:JME),INTENT(INOUT) :: KTOP_DEEP
+      REAL,DIMENSION(IMS:IME,JMS:JME),INTENT(INOUT) ::    XMB_SHALLOW      !GF
+      INTEGER,DIMENSION(IMS:IME,JMS:JME),INTENT(INOUT) :: KTOP_DEEP        !GF
+      INTEGER,DIMENSION(IMS:IME,JMS:JME),INTENT(INOUT) :: K22_SHALLOW   &  !GF
+     &                                                   ,KBCON_SHALLOW &  !GF
+     &                                                   ,KTOP_SHALLOW     !GF
+      INTEGER,DIMENSION(IMS:IME,JMS:JME),INTENT(INOUT) :: IERR_SHALLOW     !GF
+
 !
       LOGICAL,INTENT(IN) :: HYDRO,RESTRT
       LOGICAL :: IS_CAMMGMP_USED=.FALSE.
@@ -2504,10 +2518,16 @@
 !End
 
       IF(MOD(NTSD,NRADS)==0.OR.MOD(NTSD,NRADL)==0)THEN
-         DO J=JMS,JME
-         DO I=IMS,IME
+!$omp parallel do                                                       &
+!$omp& private(i,j)
+       DO J=MYJS,MYJE
+       DO I=MYIS,MYIE
            HTOP(I,J)=0.
+           HTOPD(I,J)=0.
+           HTOPS(I,J)=0.
            HBOT(I,J)=REAL(KTE+1)
+           HBOTD(I,J)=REAL(KTE+1)
+           HBOTS(I,J)=REAL(KTE+1)
            CUTOP(I,J)=0.
            CUBOT(I,J)=REAL(KTE+1)
            CUPPT(I,J)=0.
@@ -2527,7 +2547,9 @@
      &   CONFIG_FLAGS%CU_PHYSICS==SASSCHEME)RETURN
       IF(MOD(NTSD,NCNVC)/=0.AND.                                      &
      &   CONFIG_FLAGS%CU_PHYSICS==SCALESASSCHEME)RETURN 
-      
+      IF(MOD(NTSD,NCNVC)/=0.AND.                                      &
+     &   CONFIG_FLAGS%CU_PHYSICS==GFSCHEME)RETURN             ! gf
+
 !-----------------------------------------------------------------------
       NSTEP_CNV=NCNVC
 !
@@ -2560,6 +2582,16 @@
       RDTCNVC=1./DTCNVC
       CAPA=R_D/CP
       G_INV=1./G
+!
+!$omp parallel do                                                       &
+!$omp& private(i,j)
+      DO J=JTS,JTE
+        DO I=ITS,ITE
+          RAINCV(I,J)=0.
+          RAINC(I,J)=0.
+          NCA(I,J)=0.
+        ENDDO
+      ENDDO
 !
 !$omp parallel do                                                       &
 !$omp& private(I,J)
@@ -2612,10 +2644,8 @@
           P8W(I,K+1,J)=ETA1(K+1)*PDTOP+ETA2(K+1)*PDSL(I,J)+PT
           P_PHY(I,K,J)=PLYR
           PI_PHY(I,K,J)=(PLYR*1.E-5)**CAPA
-!
         ENDDO
-!
-      ENDDO
+        ENDDO
       ENDDO
 
 !$omp parallel do                                                       &
@@ -2630,8 +2660,31 @@
           RQICUTEN(I,K,J)=0.
           RQSCUTEN(I,K,J)=0.
         ENDDO
+        ENDDO
       ENDDO
-      ENDDO
+#if (NMM_CORE==1)
+!$omp parallel do                                                       &
+!$omp& private(i,j,k)
+        DO K=KTS,KTE
+!BLdebug
+        DO J=JTS,JTE
+        DO I=ITS,ITE
+!        DO J=MYJS2,MYJE2
+!        DO I=MYIS1,MYIE1
+!BLdebug
+           DUCUDT(i,j,k)=0.0
+           DVCUDT(i,j,k)=0.0
+           DTHCUDT(i,j,k)=0.0
+           DQVCUDT(i,j,k)=0.0
+           DQRCUDT(i,j,k)=0.0
+           DQCCUDT(i,j,k)=0.0
+           DQICUDT(i,j,k)=0.0
+           DQSCUDT(i,j,k)=0.0
+        ENDDO
+        ENDDO
+        ENDDO
+#endif
+
 !
 !-----------------------------------------------------------------------
 !
@@ -2817,8 +2870,15 @@
      &                 ,APR_CAPME=APR_CAPME,APR_CAPMI=APR_CAPMI         &
      &                 ,MASS_FLUX=MASS_FLUX,XF_ENS=XF_ENS               &
      &                 ,PR_ENS=PR_ENS                                   &
+     &                 ,ishallow=config_flags%ishallow                  & !gf
+     &                 ,clos_choice=config_flags%clos_choice            & !gf
      &                 ,GD_CLOUD=GD_CLOUD,GD_CLOUD2=GD_CLOUD2           &
      &                 ,KTOP_DEEP=KTOP_DEEP                             &
+     &                 ,k22_shallow=k22_shallow                         & !gf
+     &                 ,kbcon_shallow=kbcon_shallow                     & !gf
+     &                 ,ktop_shallow=ktop_shallow                       & !gf
+     &                 ,xmb_shallow=xmb_shallow                         & !gf
+     &                 ,ierr_shallow=ierr_shallow                       & !gf
      &                 ,ENSDIM=ENSDIM,MAXIENS=1,MAXENS=3                &
      &                 ,MAXENS2=3,MAXENS3=16                            &
      &                 ,RTHCUTEN=RTHCUTEN,RQVCUTEN=RQVCUTEN             &
@@ -2919,10 +2979,16 @@
 #endif
 !$omp parallel do                                                       &
 !$omp& private(i,iendx,j,ncubot,ncutop,pcpcol)
-      pcp_cloud: DO J=MYJS2,MYJE2
-        IENDX=MYIE1
+!test - gf
+!      pcp_cloud: DO J=MYJS2,MYJE2
+!        IENDX=MYIE1
+!        IF(MOD(J,2)==0.AND.ITE==IDE-1)IENDX=IENDX-1
+!        DO I=MYIS1,IENDX
+      pcp_cloud: DO J=MYJS,MYJE
+        IENDX=MYIE
         IF(MOD(J,2)==0.AND.ITE==IDE-1)IENDX=IENDX-1
-        DO I=MYIS1,IENDX
+        DO I=MYIS,IENDX
+
 !
 !***  UPDATE PRECIPITATION
 !
@@ -3014,7 +3080,7 @@
 !
           cps_select: SELECT CASE(config_flags%cu_physics)
 !
-          CASE (KFSCHEME,KFETASCHEME,GDSCHEME,SASSCHEME,SCALESASSCHEME,OSASSCHEME,NSASSCHEME,TIEDTKESCHEME)
+          CASE (KFSCHEME,KFETASCHEME,GDSCHEME,GFSCHEME,SASSCHEME,SCALESASSCHEME,OSASSCHEME,NSASSCHEME,TIEDTKESCHEME)
            IF(config_flags%mp_physics==fer_mp_hires_advect) THEN
              ! Update QI and QRIMEF:
              call QITEND_FER_HIRES_ADVECT( &

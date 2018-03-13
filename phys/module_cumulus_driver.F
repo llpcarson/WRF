@@ -91,6 +91,7 @@ CONTAINS
                      ,dp3d, du3d, ed3d, eu3d, md3d, mu3d, dsubcld2d   &
                      ,ideep2d, jt2d, maxg2d, lengath2d                &
                      ,k22_shallow,kbcon_shallow,ktop_shallow,xmb_shallow &
+                     ,ierr_shallow                                    &
                      ,ktop_deep &
                  ! Optional arguments for SAS scheme
                      ,pgcon,sas_mass_flux                             &
@@ -167,6 +168,7 @@ CONTAINS
 #endif
    USE module_cu_gd     , ONLY : grelldrv
    USE module_cu_gf_wrfdrv     , ONLY : gfdrv
+   USE module_cu_gfdrvr , ONLY : gfdrvr         !gf
    USE module_cu_g3     , ONLY : g3drv,conv_grell_spread3d
 #if ( WRFPLUS == 1 )
    USE module_cu_du     , ONLY : DUCU   
@@ -188,13 +190,14 @@ CONTAINS
    !
    !  1. Kain & Fritsch (1993)
    !  2. Betts-Miller-Janjic (Janjic, 1994)
-   !  3. Grell-Devenyi (Grell and Devenyi, 2002)
+   !  3. Grell-Freitas (Grell and Freitas, 2013)
    !  4. Simplified Arakawa-Schubert scheme (NCEP)
    !     (adapted by Zhang and Wang to work with ARW in V3.3)
    !  5. Grell 3D ensemble scheme
    !  6. Modified Tiedtke scheme (Zhang and Wang 2010)
    ! 14. New simplified Arakawa-Schubert scheme (NCEP, YSU)
    ! 16. New Tiedtke scheme (Bechtold et al. 2004, 2008, 2014)
+   ! 93. Grell-Devenyi (Grell and Devenyi, 2002)
    !
 !----------------------------------------------------------------------
    IMPLICIT NONE
@@ -537,6 +540,10 @@ CONTAINS
      lengath2d 
    INTEGER, DIMENSION( ims:ime, jms:jme ),                       &
          OPTIONAL, INTENT(  OUT) :: ktop_deep
+! egrell - added ierr_shallow for debugging
+   INTEGER, DIMENSION( ims:ime, jms:jme ),                       &
+         OPTIONAL, INTENT(INOUT) ::                              &
+          ierr_shallow
    REAL, DIMENSION( ims:ime, kms:kme, jms:jme ),                 &
          OPTIONAL, INTENT(INOUT) ::                              &
                       ! optional moisture tracers
@@ -1190,6 +1197,62 @@ CONTAINS
             ENDDO
          endif
 #endif
+
+#if (NMM_CORE == 1 )
+
+           CALL GFDRVR(                                         &
+                DT=dt                                           &
+               ,DX2D=dx2d,DY=dynmm                              &
+               ,RHO=rho,RAINCV=raincv,PRATEC=tmppratec          &
+               ,U=u,V=v,T=t,W=w                                 &
+               ,Q=qv_curr,P=p,PI=pi                             &
+               ,DZ8W=dz8w ,P8W=p8w                              &
+               ,htop=htop,hbot=hbot                             &
+               ,ktop_deep=ktop_deep                             &
+               ,HT=ht,hfx=hfx,qfx=qfx                           &
+               ,xland=xland                                     &
+               ,GDC=gd_cloud,GDC2=gd_cloud2,kpbl=kpbl           &
+               ,k22_shallow=k22_shallow                         &
+               ,kbcon_shallow=kbcon_shallow                     &
+               ,ktop_shallow=ktop_shallow                       &
+               ,xmb_shallow=xmb_shallow                         &
+               ,ierr_shallow=ierr_shallow                       & !egrell debugging
+               ,ishallow_g3=ishallow                            &
+               ,ichoice=clos_choice                             &
+               ,IDS=ids,IDE=ide,JDS=jds,JDE=jde,KDS=kds,KDE=kde &
+               ,IMS=ims,IME=ime,JMS=jms,JME=jme,KMS=kms,KME=kme &
+               ,ITS=its,ITE=ite,JTS=jts,JTE=jte,KTS=kts,KTE=kte &
+               ,PERIODIC_X=periodic_x,PERIODIC_Y=periodic_y     &
+               ,RQVCUTEN=RQVCUTEN,RQCCUTEN=RQCCUTEN             &
+              ! optionals
+#if (NMM_CORE == 1 )
+               ,RQICUTEN=RQICUTEN               &
+               ,RQVFTEN=forceq                  &
+               ,RTHFTEN=forcet                  &
+               ,RTHCUTEN=RTHCUTEN               &
+#else
+               ,RTHCUTEN=RTHCUTEN            &
+               ,RTHFTEN=RTHFTEN              &
+               ,RQICUTEN=RQICUTEN            &
+               ,RQVFTEN=RQVFTEN              &
+#endif
+               ,RTHRATEN=RTHRATEN                               &
+               ,RQVBLTEN=RQVBLTEN,RTHBLTEN=RTHBLTEN             &
+               ,RUCUTEN=RUCUTEN,RVCUTEN=RVCUTEN                 &
+               ,F_QV=f_qv,F_QC=f_qc,F_QR=f_qr                   &
+               ,F_QI=f_qi,F_QS=f_qs                             &
+#if ( WRF_DFI_RADAR == 1 )
+                 ! Optional CAP suppress option
+              ,do_capsuppress=do_capsuppress                    &
+              ,cap_suppress_loc=cap_suppress_loc                &
+#endif
+#if (NMM_CORE == 1 )
+               ,SCALEFUN=SCALEFUN                  & ! CNV scale functions
+               ,SIGMU=SIGMU                        & ! CNV updraft fractions
+#endif
+                                                                )
+
+#else
 
          CALL GFDRV(spp_conv,pattern_spp_conv,field_conv,       &
                 DT=dt,DX=dx                                     &

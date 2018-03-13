@@ -588,6 +588,10 @@
 #  include "HALO_NMM_INIT_37.inc"
 #  include "HALO_NMM_INIT_38.inc"
 #  include "HALO_NMM_INIT_39.inc"
+! gf -  to get 0 on boundaries for convective tendencies
+#  include "HALO_NMM_INIT_40.inc"
+#  include "HALO_NMM_INIT_41.inc"
+! gf end
 #endif
 !
       if((allowed_to_read .and. .not. restrt) .or. anal) then
@@ -734,8 +738,10 @@
         DO I=IFS,IFE
           grid%pdsl(I,J)  =grid%pd(I,J)*grid%res(I,J)
           grid%prec(I,J)  =0.
-          IF(allowed_to_read)grid%acprec(I,J)=0.  ! This is gopal's inclusion for moving nest
-          grid%cuprec(I,J)=0.
+          IF(allowed_to_read)then 
+            grid%acprec(I,J)=0.  ! This is gopal's inclusion for moving nest
+            grid%cuprec(I,J)=0.  ! include this too - also accumulates
+          ENDIF
           rg=1./g
           ht=grid%fis(i,j)*rg
 !!!       fisx=ht*g
@@ -944,11 +950,49 @@
         DO J=JFS,JFE
         DO I=IFS,IFE
           IF(grid%q(I,J,K)<EPSQ)grid%q(I,J,K)=EPSQ
+        ENDDO
+        ENDDO
+        ENDDO
+!gf
+      IF(allowed_to_read)then   !egrell
+        DO K=KPS,KPE
+        DO J=JFS,JFE
+        DO I=IFS,IFE
           grid%train(I,J,K)=0.
           grid%tcucn(I,J,K)=0.
         ENDDO
         ENDDO
         ENDDO
+
+!***  initialize convective tendency arrays
+!***  (should have a diag flag to check if present)
+        DO K=KPS,KPE
+        DO J=JFS,JFE
+        DO I=IFS,IFE
+          grid%DTHCUDT(I,J,K)=0.
+          grid%DQVCUDT(I,J,K)=0.
+          grid%DQCCUDT(I,J,K)=0.
+          grid%DQICUDT(I,J,K)=0.
+          grid%DQRCUDT(I,J,K)=0.
+          grid%DQSCUDT(I,J,K)=0.
+        ENDDO
+        ENDDO
+        ENDDO
+
+        if(config_flags%cu_rad_feedback) then
+          DO J=JFS,JFE
+          DO K=KPS,KPE
+          DO I=IFS,IFE
+            grid%QC_CU(I,K,J)=0.
+            grid%QI_CU(I,K,J)=0.
+          ENDDO
+          ENDDO
+          ENDDO
+        endif
+
+      ENDIF
+!gf end
+
 !
 !***
 !***  INITIALIZE MAX/MIN TEMPERATURES.
@@ -2135,9 +2179,8 @@
      &             ,STEPBL,STEPRA,STEPCU                                &
      &             ,grid%w0avg, RAINNC, RAINC, grid%raincv, RAINNCV               &
      &             ,SNOWNC, SNOWNCV, GRAUPELNC, GRAUPELNCV              &
-     &             ,z_at_q, rri, grid%qnwfa2d                           &
-!     &             ,scalar_trans(ims,kms,jms,1),num_scalar              &
-     &             ,scalar_trans,num_scalar              &
+     &             ,z_at_q, grid%qnwfa2d                                &
+     &             ,scalar_trans,num_scalar                             &
      &             ,grid%re_cloud, grid%re_ice, grid%re_snow            & ! G. Thompson
      &             ,grid%has_reqc,grid%has_reqi,grid%has_reqs           & ! G. Thompson
      &             ,NCA,GRID%SWRAD_SCAT                                 &
@@ -2173,6 +2216,8 @@
      &             ,ITS, ITE, JTS, JTE, KTS, KTE                        &
      &             ,NUM_URBAN_LAYERS,NUM_URBAN_HI                       &
      &             ,GRID%RAINCV_A,GRID%RAINCV_B                         &
+     &             ,gd_cloud=grid%gd_cloud,gd_cloud2=grid%gd_cloud2     & ! Optional GF-Cu
+     &             ,qc_cu=grid%qc_cu,qi_cu=grid%qi_cu                   & ! Optional GF-Cu
      &               ,ISNOWXY=grid%ISNOWXY, ZSNSOXY=grid%ZSNSOXY, TSNOXY=grid%TSNOXY,    & ! Optional Noah-MP
      &                SNICEXY=grid%SNICEXY, SNLIQXY=grid%SNLIQXY, TVXY=grid%TVXY,        & ! Optional Noah-MP
      &                TGXY=grid%TGXY, CANICEXY=grid%CANICEXY,                            & ! Optional Noah-MP
@@ -2567,6 +2612,10 @@
 #  include "HALO_NMM_INIT_37.inc"
 #  include "HALO_NMM_INIT_38.inc"
 #  include "HALO_NMM_INIT_39.inc"
+! gf - for convective tendencies
+#  include "HALO_NMM_INIT_40.inc"
+#  include "HALO_NMM_INIT_41.inc"
+! gf end
 #endif
 !#define COPY_OUT
 !#include "scalar_derefs.inc"
