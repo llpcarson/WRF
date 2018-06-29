@@ -339,12 +339,13 @@
          call nl_get_dy(grid%id,tempdy)
          grid%wbd0var = -(IDE-2)*tempdx
          grid%sbd0var = -((JDE-1)/2)*tempdy
-!lpc #if ! ( NMM_NEST == 1 )
+! always do this (needed for any single-domain run)
+! #if ! ( NMM_NEST == 1 )
          ! When NMM is compiled without nesting support, we need to
          ! update the bound metadata here:
          grid%wbd0 = grid%wbd0var
          grid%sbd0 = grid%sbd0var
-!lpc #endif
+! #endif
       endif has_parent
       if(tempdx<1e-5 .or. tempdy<1e-5) then
          ! Should never reach here unless someone adds a bug to NMM.
