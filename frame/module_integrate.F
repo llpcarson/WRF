@@ -15,6 +15,9 @@ RECURSIVE SUBROUTINE integrate ( grid )
    USE module_configure
    USE module_timing
    USE module_utility
+#if ( WRFPLUS == 1 )
+!   USE module_linked_list2, only : linkedlist_initialize
+#endif
    USE module_cpl, ONLY : coupler_on, cpl_snd, cpl_defdomain
 #ifdef DM_PARALLEL
 ! better if this did not need to be used here. Problem is that the definition of 
@@ -165,7 +168,10 @@ RECURSIVE SUBROUTINE integrate ( grid )
    INTEGER                                :: idum1 , idum2 , ierr , open_status
    LOGICAL                                :: should_do_last_io
    LOGICAL                                :: may_have_moved
-
+#if ( WRFPLUS == 1 )
+   INTEGER                                :: rc
+   LOGICAL                                :: should_add_forcing
+#endif
 
    ! interface
    INTERFACE
@@ -190,6 +196,28 @@ RECURSIVE SUBROUTINE integrate ( grid )
        TYPE (domain) grid
        TYPE (grid_config_rec_type) config_flags
      END SUBROUTINE med_before_solve_io
+#if ( WRFPLUS == 1 )
+     SUBROUTINE med_last_ad_solve_io ( grid , config_flags )
+       USE module_domain
+       USE module_configure
+       TYPE (domain) grid
+       TYPE (grid_config_rec_type) config_flags
+     END SUBROUTINE med_last_ad_solve_io
+     SUBROUTINE jcdfi_init_coef
+     END SUBROUTINE jcdfi_init_coef
+     SUBROUTINE jcdfi_zero_forcing ( grid )
+       USE module_domain
+       TYPE (domain) grid
+     END SUBROUTINE jcdfi_zero_forcing
+     SUBROUTINE jcdfi_tl ( grid )
+       USE module_domain
+       TYPE (domain) grid
+     END SUBROUTINE jcdfi_tl
+     SUBROUTINE jcdfi_add_forcing (grid)
+       USE module_domain
+       TYPE (domain) grid
+     END SUBROUTINE jcdfi_add_forcing
+#endif
        ! mediation-supplied routine that gives mediation layer opportunity to 
        ! perform I/O after the call to the solve routine
      SUBROUTINE med_after_solve_io ( grid , config_flags )
@@ -291,12 +319,18 @@ RECURSIVE SUBROUTINE integrate ( grid )
       CALL model_to_grid_config_rec ( grid%id , model_config_rec , config_flags )
       IF ( config_flags%grid_allowed ) THEN
          CALL domain_clockprint ( 150, grid, 'DEBUG:  top of integrate(),' )
+#if ( WRFPLUS == 1 )
+         IF ( (grid%jcdfi_use .OR. grid%jcdfi_diag .EQ. 1) .AND. config_flags%dyn_opt .EQ. dyn_em_tl ) THEN
+            CALL jcdfi_zero_forcing (grid)
+            CALL jcdfi_tl (grid)
+         ENDIF
+#endif
          DO WHILE ( .NOT. domain_clockisstopsubtime(grid) )
-!            IF ( wrf_dm_on_monitor() ) THEN
+            IF ( wrf_dm_on_monitor() ) THEN
 IF ( grid%active_this_task ) THEN
                CALL start_timing
-ENDIF
-!            END IF
+END IF
+            END IF
             CALL med_setup_step ( grid , config_flags )
             a_nest_was_opened = .false.
             ! for each nest whose time has come...
@@ -329,13 +363,32 @@ ENDIF ! active_this_task
 IF ( grid%active_this_task ) THEN
             ! Accumulation calculation for DFI
               CALL dfi_accumulate ( grid )
+ENDIF ! active_this_task
 
+#if ( WRFPLUS == 1 )
+            ! Check if the auxinput3 is ringing before read it
+            should_add_forcing = .FALSE.
+            IF ( WRFU_AlarmIsRinging( grid%alarms( AUXINPUT7_ALARM ), rc=rc ) ) should_add_forcing = .TRUE.  
+#endif
+
+IF ( grid%active_this_task ) THEN
               CALL med_before_solve_io ( grid , config_flags )
 ENDIF ! active_this_task
 
+#if ( WRFPLUS == 1 )
+            IF ( config_flags%dyn_opt .EQ. dyn_em_ad .AND. should_add_forcing) THEN
+              CALL add_forcing_to_ad ( grid )
+            ENDIF
+            IF ( grid%jcdfi_use .AND. config_flags%dyn_opt .EQ. dyn_em_ad ) THEN
+               CALL jcdfi_add_forcing ( grid )
+            ENDIF
+#endif
+
             grid_ptr => grid
             DO WHILE ( ASSOCIATED( grid_ptr ) )
+#if ( NMM_CORE == 1 )
                   grid_ptr%mvnest = .FALSE.
+#endif
 IF ( grid_ptr%active_this_task ) THEN
                   CALL set_current_grid_ptr( grid_ptr )
                   CALL wrf_debug( 100 , 'module_integrate: calling solve interface ' )
@@ -350,8 +403,6 @@ ENDIF
                CALL domain_time_test( grid_ptr, 'domain_clockadvance' )
                grid_ptr => grid_ptr%sibling
             END DO
-
-
             CALL set_current_grid_ptr( grid )
             CALL med_calc_model_time ( grid , config_flags )
 IF ( grid%active_this_task ) THEN
@@ -360,7 +411,6 @@ ENDIF
 
             grid_ptr => grid
             DO WHILE ( ASSOCIATED( grid_ptr ) )
-
                DO kid = 1, max_nests
                  IF ( ASSOCIATED( grid_ptr%nests(kid)%ptr ) ) THEN
                    CALL set_current_grid_ptr( grid_ptr%nests(kid)%ptr )
@@ -415,6 +465,7 @@ ENDIF
             END DO
             CALL set_current_grid_ptr( grid )
             !  Report on the timing for a single time step.
+            IF ( wrf_dm_on_monitor() ) THEN
 IF ( grid%active_this_task ) THEN
                CALL domain_clock_get ( grid, current_timestr=message2 )
 #if (EM_CORE == 1)
@@ -423,14 +474,17 @@ IF ( grid%active_this_task ) THEN
                else
                   WRITE ( message , FMT = '("main: time ",A," on domain ",I3)' ) TRIM(message2), grid%id
                endif
-               CALL end_timing ( TRIM(message) )
 #else
-               ! NMM uses a more compact syntax and adds more information:
-3011           format("main: ",A," dom ",I0," <dP/dt>=",F0.3," hPa/3hr timing ")
-               write(message,3011) trim(message2),grid%id,grid%avgPchg
-               CALL end_timing_fmt ( TRIM(message), FMT='(A," ",F0.5," s")' )
+                  WRITE ( message , FMT = '("main: time ",A," on domain ",I3)' ) TRIM(message2), grid%id
 #endif
+               CALL end_timing ( TRIM(message) )
 ENDIF ! active_this_task
+            ENDIF
+#if ( WRFPLUS == 1 )
+            IF ( (grid%jcdfi_use .OR. grid%jcdfi_diag .EQ. 1) .AND. config_flags%dyn_opt .EQ. dyn_em_tl ) THEN
+               CALL jcdfi_tl (grid)
+            ENDIF
+#endif
             CALL med_endup_step ( grid , config_flags )
          END DO
 
@@ -439,6 +493,19 @@ IF ( grid%active_this_task ) THEN
          CALL dfi_accumulate ( grid )
 ENDIF ! active_this_task
 
+#if ( WRFPLUS == 1 )
+!        Read in first basic states and forcing, add forcing
+         IF ( config_flags%dyn_opt .EQ. dyn_em_ad .AND. WRFU_AlarmIsRinging( grid%alarms( AUXINPUT7_ALARM ), rc=rc ) ) THEN
+           CALL med_last_ad_solve_io ( grid , config_flags )
+           CALL add_forcing_to_ad ( grid )
+         ENDIF
+         IF ( grid%jcdfi_use .AND. config_flags%dyn_opt .EQ. dyn_em_ad ) THEN
+            CALL jcdfi_add_forcing ( grid )
+         ENDIF
+         !IF ( config_flags%dyn_opt .EQ. dyn_em_ad ) THEN
+         !   CALL linkedlist_initialize
+         !ENDIF
+#endif
 
          ! Avoid double writes on nests if this is not really the last time;
          ! Do check for write if the parent domain is ending.
