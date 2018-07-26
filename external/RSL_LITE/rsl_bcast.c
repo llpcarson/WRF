@@ -467,8 +467,10 @@ rsl_lite_to_peerpoint_msg ( nbuf_p, buf )
   char *
     buf ;        /* (I) Buffer containing the data to be packed. */
 {
-  int nbuf, i, imax;
-  int * p, * q;
+  int nbuf ;
+  int *p, *q ;
+  char *c, *d ;
+  int i ;
   char mess[4096] ;
 
   RSL_TEST_ERR(buf==NULL,"2nd argument is NULL.  Field allocated?") ;
@@ -481,9 +483,22 @@ rsl_lite_to_peerpoint_msg ( nbuf_p, buf )
     RSL_TEST_ERR(1,mess) ;
   }
 
-  memcpy(&(Sendbuf[Sendbufcurs]),buf,nbuf);
+  if ( nbuf % sizeof(int) == 0 ) {
+    for ( p = (int *)buf, q = (int *) &(Sendbuf[Sendbufcurs]), i = 0 ; i < nbuf ; i += sizeof(int) )
+    {
+      *q++ = *p++ ;
+    }
+  }
+  else
+  {
+    for ( c = buf, d = &(Sendbuf[Sendbufcurs]), i = 0 ; i < nbuf ; i++ )
+    {
+      *d++ = *c++ ;
+    }
+  }
 
   Sendbufcurs += nbuf ;
+
 }
 
 /********************************************/
@@ -690,13 +705,23 @@ rsl_lite_from_peerpoint_msg ( len_p, buf )
   int *
     buf ;            /* (O) Destination buffer. */
 {
-  int  * p, * q ;
-  int  i, imax, len=*len_p;
+  int *p, *q ;
+  char *c, *d ;
+  int i ;
 
-  if(len<0)
-    len=Rreclen - Rpointcurs; /* len<0 is magic for "give me all of it" */
-  memcpy(buf,&(Recvbuf[Rbufcurs+Rpointcurs]),len);
-  Rpointcurs += len;
+  if ( *len_p % sizeof(int) == 0 ) {
+    for ( p = (int *)&(Recvbuf[Rbufcurs+Rpointcurs]), q = buf , i = 0 ; i < *len_p ; i += sizeof(int) ) 
+    {
+      *q++ = *p++ ;
+    }
+  } else {
+    for ( c = &(Recvbuf[Rbufcurs+Rpointcurs]), d = (char *) buf , i = 0 ; i < *len_p ; i++ )
+    {
+      *d++ = *c++ ;
+    }
+  }
+
+  Rpointcurs += *len_p ;
 }
 
 /********************************************/

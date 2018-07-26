@@ -1106,22 +1106,20 @@ CONTAINS
 
 ! temporarily modify hydrometeors (currently only done for GD scheme and WRF-Chem)
 !
-       IF ( PRESENT( qc ) .AND. PRESENT( qc_cu ) .AND. icloud_cu .EQ. 1 ) THEN
+       IF ( F_QC ) THEN
           DO j=jts,jte
           DO k=kts,kte
           DO i=its,ite
             qc_save(i,k,j) = qc(i,k,j)
-            qc(i,k,j) = qc(i,k,j) + qc_cu(i,k,j)
           ENDDO
           ENDDO
           ENDDO
        ENDIF
-       IF ( PRESENT( qi ) .AND. PRESENT( qi_cu ) .AND. icloud_cu .EQ. 1 ) THEN
+       IF ( F_QI ) THEN
           DO j=jts,jte
           DO k=kts,kte
           DO i=its,ite
             qi_save(i,k,j) = qi(i,k,j)
-            qi(i,k,j) = qi(i,k,j) + qi_cu(i,k,j)
           ENDDO
           ENDDO
           ENDDO
@@ -1141,7 +1139,7 @@ CONTAINS
 
 
 ! Fill temporary water variable depending on micro package (tgs 25 Apr 2006)
-     if(PRESENT(qc) .and. PRESENT(F_QC)) then
+     if( F_QC ) then
         DO j=jts,jte
         DO k=kts,kte
         DO i=its,ite
@@ -1215,8 +1213,7 @@ CONTAINS
 
      IF ( ICLOUD == 1 ) THEN
 
-     IF ( PRESENT ( CLDFRA ) .AND.                           &
-          PRESENT(F_QC) .AND. PRESENT ( F_QI ) ) THEN
+     IF ( F_QC .OR. F_QI ) THEN
 ! Call to cloud fraction routine based on Randall 1994 (Hong Pan 1998)
 
         CALL wrf_debug (1, 'CALL cldfra1')
@@ -1239,9 +1236,7 @@ CONTAINS
                 CLDFRA(i,k,j)=(1.-cldfra_cu(i,k,j))*CLDFRA(i,k,j)  ! Update resolved cloud fraction for Cu punch-through
                 CLDFRA(i,k,j)=CLDFRA(i,k,j)+cldfra_cu(i,k,j)       ! New total cloud fraction
                 CLDFRA(i,k,j)=AMIN1(1.0,CLDFRA(i,k,j))
-                qc_save(i,k,j)=qc(i,k,j)
                 qc(i,k,j) = qc(i,k,j)+qc_cu(i,k,j)*cldfra_cu(i,k,j)
-                qi_save(i,k,j)=qi(i,k,j)
                 qi(i,k,j) = qi(i,k,j)+qi_cu(i,k,j)*cldfra_cu(i,k,j)
              ENDDO
              ENDDO
@@ -1345,8 +1340,7 @@ CONTAINS
  
      ELSE IF ( ICLOUD == 2 ) THEN
 
-     IF ( PRESENT ( CLDFRA ) .AND.                           &
-          PRESENT(F_QC) .AND. PRESENT ( F_QI ) ) THEN
+     IF ( F_QC .OR. F_QI ) THEN
        CALL wrf_debug (1, 'CALL cldfra2')
        CALL cal_cldfra2(CLDFRA,qc,qi,F_QC,F_QI,              &
                        ids,ide, jds,jde, kds,kde,            &
@@ -1359,8 +1353,7 @@ CONTAINS
 !+---+-----------------------------------------------------------------+ 
 
       ELSEIF (ICLOUD == 3) THEN
-        IF (PRESENT(CLDFRA) .AND.                                       &
-                           PRESENT(F_QC) .AND. PRESENT ( F_QI ) ) THEN
+        IF ( F_QC .AND. F_QI ) THEN
 
            DO j = jts,jte
            DO k = kts,kte
@@ -1370,7 +1363,7 @@ CONTAINS
            ENDDO
            ENDDO
            ENDDO
-           IF (PRESENT(F_QS)) THEN
+           IF ( F_QS ) THEN
               DO j = jts,jte
               DO k = kts,kte
               DO i = its,ite
@@ -2467,32 +2460,7 @@ CONTAINS
          ENDDO
      ENDIF
 
-      IF (ICLOUD == 3) THEN
-        IF (PRESENT(CLDFRA) .AND.                                       &
-            PRESENT(F_QC) .AND. PRESENT ( F_QI ) ) THEN
-           CALL wrf_debug (150, 'DEBUG-GT, back to micro-only Qc and Qi')
-           DO j = jts,jte
-           DO k = kts,kte
-           DO i = its,ite
-              qc(i,k,j) = qc_save(i,k,j)
-              qi(i,k,j) = qi_save(i,k,j)
-           ENDDO
-           ENDDO
-           ENDDO
-           IF (PRESENT(F_QS)) THEN
-              DO j = jts,jte
-              DO k = kts,kte
-              DO i = its,ite
-                 qs(i,k,j) = qs_save(i,k,j)
-              ENDDO
-              ENDDO
-              ENDDO
-           ENDIF
-        ENDIF
-      ENDIF
-
-      IF ( PRESENT( qc  ) .AND. PRESENT( qc_cu ) ) THEN 
-         IF ( icloud_cu .NE. 0 ) THEN
+      IF ( F_QC ) THEN
          DO j=jts,jte
          DO k=kts,kte
          DO i=its,ite
@@ -2500,10 +2468,8 @@ CONTAINS
          ENDDO
          ENDDO
          ENDDO
-         ENDIF
       ENDIF
-      IF ( PRESENT( qi  ) .AND. PRESENT( qi_cu ) ) THEN
-         IF ( icloud_cu .NE. 0 ) THEN
+      IF ( F_QI ) THEN
          DO j=jts,jte
          DO k=kts,kte
          DO i=its,ite
@@ -2511,7 +2477,6 @@ CONTAINS
          ENDDO
          ENDDO
          ENDDO
-         ENDIF
       ENDIF
 
       IF (aercu_opt.gt.0.0) THEN
@@ -3182,8 +3147,6 @@ CONTAINS
    USE module_state_description, ONLY : FER_MP_HIRES, FER_MP_HIRES_ADVECT
 #endif
 !---------------------------------------------------------------------
-   use module_state_description, only: etamp_hwrf, fer_mp_hires, &
-                                       fer_mp_hires_advect
    IMPLICIT NONE
 !---------------------------------------------------------------------
    INTEGER,  INTENT(IN   )   ::           ids,ide, jds,jde, kds,kde, &
@@ -3471,7 +3434,7 @@ CONTAINS
       DO j = jts,jte
       DO k = kts,kte
       DO i = its,ite
-
+         RHI_max = 0.0
          CLDFRA(I,K,J) = 0.0
 
          if (qc(i,k,j).gt.1.E-6 .or. qi(i,k,j).ge.1.E-7 .or. qs(i,k,j).gt.1.E-5) then
@@ -3863,6 +3826,11 @@ CONTAINS
       do k = kts, k_tropo
          if (cfr(k).gt.0.0) then
             lwp = lwp + qc(k)*Rho(k)*dz(k)
+         endif
+      enddo
+
+      do k = kts, k_tropo
+         if (cfr(k).gt.0.01 .and. cfr(k).lt.0.99) then
             iwp = iwp + qi(k)*Rho(k)*dz(k)
          endif
       enddo
